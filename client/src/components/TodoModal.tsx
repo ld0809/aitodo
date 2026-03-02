@@ -50,8 +50,7 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
     );
   };
 
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateTag = () => {
     if (!newTagName.trim()) return;
     onCreateTag(newTagName.trim(), '#3b82f6');
     setNewTagName('');
@@ -93,15 +92,21 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
                   </span>
                 ))}
               </div>
-              <form onSubmit={handleCreateTag} style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                 <input
                   type="text"
                   placeholder="输入新标签名，回车添加..."
                   value={newTagName}
                   onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateTag();
+                    }
+                  }}
                   style={{ flex: 1, padding: '8px 12px' }}
                 />
-              </form>
+              </div>
             </div>
             <div className="fr">
               <div className="mb">

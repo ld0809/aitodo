@@ -17,6 +17,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/typeorm": "^10.0.2",
+    "axios": "^1.13.6",
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^11.9.1",
     "class-transformer": "^0.5.1",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^10.4.15",
+    "@types/axios": "^0.9.36",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",

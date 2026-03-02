@@ -5,6 +5,10 @@ import { RegisterPage } from './pages/RegisterPage';
 import { LoginPage } from './pages/LoginPage';
 import { VerifyPage } from './pages/VerifyPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { TapdConfigPage } from './pages/TapdConfigPage';
+import { RequirementQueryPage } from './pages/RequirementQueryPage';
+import { BugQueryPage } from './pages/BugQueryPage';
+import { TodoQueryPage } from './pages/TodoQueryPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +73,38 @@ function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tapd-config"
+            element={
+              <ProtectedRoute>
+                <TapdConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/requirements"
+            element={
+              <ProtectedRoute>
+                <RequirementQueryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bugs"
+            element={
+              <ProtectedRoute>
+                <BugQueryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/todo-query"
+            element={
+              <ProtectedRoute>
+                <TodoQueryPage />
               </ProtectedRoute>
             }
           />

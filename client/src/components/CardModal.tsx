@@ -17,6 +17,12 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState('');
+  
+  // TAPD 配置
+  const [pluginType, setPluginType] = useState<'local_todo' | 'tapd'>('local_todo');
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
+  const [iterationId, setIterationId] = useState('');
 
   useEffect(() => {
     if (card) {
@@ -24,6 +30,21 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
       setSortBy(card.sortBy);
       setSortOrder(card.sortOrder);
       setSelectedTagIds((Array.isArray(card.tags) ? card.tags : []).map((t) => t.id));
+      
+      // 解析 pluginConfig
+      if (card.pluginType === 'tapd' && card.pluginConfigJson) {
+        try {
+          const config = JSON.parse(card.pluginConfigJson);
+          setPluginType('tapd');
+          setWorkspaceId(config.workspaceId || '');
+          setContentType(config.contentType || 'all');
+          setIterationId(config.iterationId || '');
+        } catch {
+          setPluginType('tapd');
+        }
+      } else {
+        setPluginType(card.pluginType === 'tapd' ? 'tapd' : 'local_todo');
+      }
     }
   }, [card]);
 
@@ -31,11 +52,22 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
     e.preventDefault();
     if (!name.trim()) return;
 
+    let pluginConfig: Record<string, unknown> | undefined;
+    if (pluginType === 'tapd') {
+      pluginConfig = {
+        workspaceId: workspaceId.trim(),
+        contentType,
+        iterationId: iterationId.trim() || undefined,
+      };
+    }
+
     const data: CreateCardDto | UpdateCardDto = {
       name: name.trim(),
       sortBy,
       sortOrder,
       tagIds: selectedTagIds,
+      pluginType,
+      pluginConfig,
     };
 
     onSave(data);
@@ -49,8 +81,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
     );
   };
 
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateTag = () => {
     if (!newTagName.trim()) return;
     onCreateTag(newTagName.trim(), '#3b82f6');
     setNewTagName('');
@@ -79,6 +110,57 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
                 required
               />
             </div>
+            
+            <div className="mb">
+              <label>数据来源</label>
+              <select 
+                value={pluginType} 
+                onChange={(e) => setPluginType(e.target.value as 'local_todo' | 'tapd')}
+                style={{ width: '100%' }}
+              >
+                <option value="local_todo">本地待办</option>
+                <option value="tapd">TAPD</option>
+              </select>
+            </div>
+
+            {pluginType === 'tapd' && (
+              <>
+                <div className="mb">
+                  <label>Workspace ID <span style={{color: '#999'}}>(必填)</span></label>
+                  <input
+                    type="text"
+                    placeholder="例如: 54330609"
+                    value={workspaceId}
+                    onChange={(e) => setWorkspaceId(e.target.value)}
+                    required={pluginType === 'tapd'}
+                  />
+                </div>
+
+                <div className="mb">
+                  <label>展示内容</label>
+                  <select 
+                    value={contentType}
+                    onChange={(e) => setContentType(e.target.value as 'all' | 'requirements' | 'bugs')}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="all">需求 + 缺陷</option>
+                    <option value="requirements">仅需求</option>
+                    <option value="bugs">仅缺陷</option>
+                  </select>
+                </div>
+
+                <div className="mb">
+                  <label>迭代 ID <span style={{color: '#999'}}>(可选)</span></label>
+                  <input
+                    type="text"
+                    placeholder="不填则显示全部迭代"
+                    value={iterationId}
+                    onChange={(e) => setIterationId(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
             <div className="mb">
               <label>排序方式</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -106,15 +188,21 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
                   </span>
                 ))}
               </div>
-              <form onSubmit={handleCreateTag} style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                 <input
                   type="text"
                   placeholder="输入新标签名，回车添加..."
                   value={newTagName}
                   onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateTag();
+                    }
+                  }}
                   style={{ flex: 1, padding: '8px 12px' }}
                 />
-              </form>
+              </div>
             </div>
           </div>
           <div className="modal-footer">

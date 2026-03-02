@@ -8,11 +8,13 @@ import { TagsModule } from './tags/tags.module';
 import { TodosModule } from './todos/todos.module';
 import { CardsModule } from './cards/cards.module';
 import { PluginsModule } from './plugins/plugins.module';
+import { TapdModule } from './tapd/tapd.module';
 import { Card } from './database/entities/card.entity';
 import { EmailCode } from './database/entities/email-code.entity';
 import { Tag } from './database/entities/tag.entity';
 import { Todo } from './database/entities/todo.entity';
 import { User } from './database/entities/user.entity';
+import { TapdConfig } from './database/entities/tapd-config.entity';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -30,7 +32,7 @@ function resolveDatabasePath() {
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: resolveDatabasePath(),
-      entities: [User, EmailCode, Tag, Todo, Card],
+      entities: [User, EmailCode, Tag, Todo, Card, TapdConfig],
       synchronize: true,
       logging: false,
     }),
@@ -40,6 +42,7 @@ function resolveDatabasePath() {
     TodosModule,
     PluginsModule,
     CardsModule,
+    TapdModule,
   ],
 })
 export class AppModule {}

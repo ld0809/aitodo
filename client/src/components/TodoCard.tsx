@@ -32,7 +32,13 @@ export function TodoCard({ todo, onToggle, onEdit }: TodoCardProps) {
   const isCompleted = todo.status === 'completed';
 
   return (
-    <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={onEdit}>
+    <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
+              if ((todo as any).url) {
+                window.open((todo as any).url, '_blank');
+              } else {
+                onEdit();
+              }
+            }}>
       <div className="todo-row">
         <div
           className={`checkbox ${isDone ? 'checked' : ''}`}
