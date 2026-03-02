@@ -1,0 +1,230 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository, IsNull, LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
+import { Tag } from '../database/entities/tag.entity';
+import { Todo } from '../database/entities/todo.entity';
+import { CreateTodoDto } from './dto/create-todo.dto';
+import { QueryTodosDto } from './dto/query-todos.dto';
+import { UpdateTodoDto } from './dto/update-todo.dto';
+
+@Injectable()
+export class TodosService {
+  constructor(
+    @InjectRepository(Todo)
+    private readonly todoRepository: Repository<Todo>,
+    @InjectRepository(Tag)
+    private readonly tagRepository: Repository<Tag>,
+  ) {}
+
+  async create(userId: string, dto: CreateTodoDto) {
+    const tags = await this.getValidatedTags(userId, dto.tagIds);
+
+    const todo = this.todoRepository.create({
+      userId,
+      content: dto.content,
+      dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+      executeAt: dto.executeAt ? new Date(dto.executeAt) : null,
+      status: dto.status ?? 'todo',
+      deletedAt: null,
+      tags,
+    });
+
+    const savedTodo = await this.todoRepository.save(todo);
+    return this.findOne(userId, savedTodo.id);
+  }
+
+  async findAll(userId: string, query: QueryTodosDto) {
+    const queryBuilder = this.todoRepository
+      .createQueryBuilder('todo')
+      .leftJoinAndSelect('todo.tags', 'tag')
+      .where('todo.user_id = :userId', { userId })
+      .andWhere('todo.deleted_at IS NULL')
+      .distinct(true);
+
+    if (query.status) {
+      queryBuilder.andWhere('todo.status = :status', { status: query.status });
+    }
+
+    if (query.tag_ids) {
+      const tagIds = query.tag_ids
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      if (tagIds.length > 0) {
+        queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds });
+      }
+    }
+
+    if (query.due_from) {
+      queryBuilder.andWhere('todo.due_at >= :dueFrom', { dueFrom: new Date(query.due_from) });
+    }
+
+    if (query.due_to) {
+      queryBuilder.andWhere('todo.due_at <= :dueTo', { dueTo: new Date(query.due_to) });
+    }
+
+    const sortColumnMap: Record<string, string> = {
+      due_at: 'todo.due_at',
+      created_at: 'todo.created_at',
+      execute_at: 'todo.execute_at',
+      updated_at: 'todo.updated_at',
+    };
+
+    const sortBy = query.sort_by ?? 'created_at';
+    const sortOrder = (query.sort_order ?? 'desc').toUpperCase() as 'ASC' | 'DESC';
+    queryBuilder.orderBy(sortColumnMap[sortBy], sortOrder);
+
+    return queryBuilder.getMany();
+  }
+
+  async findToday(userId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return this.todoRepository
+      .createQueryBuilder('todo')
+      .leftJoinAndSelect('todo.tags', 'tag')
+      .where('todo.user_id = :userId', { userId })
+      .andWhere('todo.deleted_at IS NULL')
+      .andWhere('todo.due_at >= :today', { today })
+      .andWhere('todo.due_at < :tomorrow', { tomorrow })
+      .orderBy('todo.due_at', 'ASC')
+      .getMany();
+  }
+
+  async findWeek(userId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    return this.todoRepository
+      .createQueryBuilder('todo')
+      .leftJoinAndSelect('todo.tags', 'tag')
+      .where('todo.user_id = :userId', { userId })
+      .andWhere('todo.deleted_at IS NULL')
+      .andWhere('todo.due_at >= :today', { today })
+      .andWhere('todo.due_at < :weekEnd', { weekEnd })
+      .orderBy('todo.due_at', 'ASC')
+      .getMany();
+  }
+
+  async findOne(userId: string, id: string) {
+    const todo = await this.todoRepository.findOne({
+      where: {
+        id,
+        userId,
+        deletedAt: IsNull(),
+      },
+      relations: {
+        tags: true,
+      },
+    });
+
+    if (!todo) {
+      throw new NotFoundException('todo not found');
+    }
+
+    return todo;
+  }
+
+  async update(userId: string, id: string, dto: UpdateTodoDto) {
+    const todo = await this.todoRepository.findOne({
+      where: {
+        id,
+        userId,
+        deletedAt: IsNull(),
+      },
+      relations: {
+        tags: true,
+      },
+    });
+
+    if (!todo) {
+      throw new NotFoundException('todo not found');
+    }
+
+    if (dto.content !== undefined) {
+      todo.content = dto.content;
+    }
+    if (dto.dueAt !== undefined) {
+      todo.dueAt = new Date(dto.dueAt);
+    }
+    if (dto.executeAt !== undefined) {
+      todo.executeAt = new Date(dto.executeAt);
+    }
+    if (dto.status !== undefined) {
+      todo.status = dto.status as 'todo' | 'done' | 'completed';
+    }
+    if (dto.tagIds !== undefined) {
+      todo.tags = await this.getValidatedTags(userId, dto.tagIds);
+    }
+
+    await this.todoRepository.save(todo);
+    return this.findOne(userId, id);
+  }
+
+  async complete(userId: string, id: string, completed: boolean) {
+    const todo = await this.todoRepository.findOne({
+      where: {
+        id,
+        userId,
+        deletedAt: IsNull(),
+      },
+    });
+
+    if (!todo) {
+      throw new NotFoundException('todo not found');
+    }
+
+    todo.status = completed ? 'done' : 'todo';
+    todo.completedAt = completed ? new Date() : null;
+    await this.todoRepository.save(todo);
+
+    return {
+      id: todo.id,
+      status: todo.status,
+      completedAt: todo.completedAt,
+    };
+  }
+
+  async remove(userId: string, id: string) {
+    const todo = await this.todoRepository.findOne({
+      where: {
+        id,
+        userId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (!todo) {
+      throw new NotFoundException('todo not found');
+    }
+
+    todo.deletedAt = new Date();
+    await this.todoRepository.save(todo);
+
+    return { id };
+  }
+
+  private async getValidatedTags(userId: string, tagIds?: string[]) {
+    if (!tagIds || tagIds.length === 0) {
+      return [];
+    }
+
+    const tags = await this.tagRepository.find({
+      where: {
+        userId,
+        id: In(tagIds),
+      },
+    });
+
+    if (tags.length !== tagIds.length) {
+      throw new BadRequestException('one or more tags are invalid');
+    }
+
+    return tags;
+  }
+}

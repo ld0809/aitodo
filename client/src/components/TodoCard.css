@@ -1,0 +1,119 @@
+.todo-item {
+  padding: 12px;
+  border-radius: var(--r2);
+  margin-bottom: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: 0.2s;
+  border: 1px solid transparent;
+}
+
+.todo-item:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.todo-item:last-child {
+  margin-bottom: 0;
+}
+
+.todo-item.done {
+  opacity: 0.7;
+}
+
+.todo-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #fff;
+}
+
+.checkbox:hover {
+  border-color: var(--accent);
+}
+
+.checkbox.checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.todo-content {
+  flex: 1;
+}
+
+.todo-text {
+  font-size: 14px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.todo-text.done {
+  text-decoration: line-through;
+  color: var(--txt3);
+}
+
+.todo-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.tag.work {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tag.personal {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tag.urgent {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.tag.learn {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tag.default {
+  background: var(--border);
+  color: var(--txt2);
+}
+
+.time {
+  font-size: 12px;
+  color: var(--txt3);
+}
+
+.time.warn {
+  color: var(--warn);
+}
+
+.time.danger {
+  color: var(--danger);
+}

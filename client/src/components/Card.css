@@ -1,0 +1,97 @@
+.card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title .count {
+  background: #e0e7ff;
+  color: #4f46e5;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.card-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0.6;
+}
+
+.card-actions button:hover {
+  background: #f3f4f6;
+  opacity: 1;
+}
+
+.card-body {
+  padding: 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.add-todo-btn {
+  width: 100%;
+  padding: 8px;
+  border: 2px dashed #ddd;
+  border-radius: 4px;
+  background: none;
+  color: #666;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.add-todo-btn:hover {
+  border-color: #4f46e5;
+  color: #4f46e5;
+}
+
+.grid-card {
+  height: 100% !important;
+}
+
+.grid-card > .card {
+  height: 100%;
+}
+
+.react-grid-item {
+  height: 100% !important;
+}
+
+.react-grid-item > .react-grid-placeholder {
+  height: 100% !important;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: #e0e7ff;
+  opacity: 0.5;
+  border-radius: 8px;
+}

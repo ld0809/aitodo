@@ -1,0 +1,31 @@
+import { Injectable } from '@nestjs/common';
+import { Card } from '../database/entities/card.entity';
+import { PluginRegistry } from './plugin-registry.service';
+
+@Injectable()
+export class PluginExecutor {
+  constructor(private readonly pluginRegistry: PluginRegistry) {}
+
+  async fetchCardTodos(userId: string, card: Card) {
+    const plugin = this.pluginRegistry.get(card.pluginType);
+    const parsedConfig = this.parseConfig(card.pluginConfigJson);
+
+    await plugin.validateConfig(parsedConfig);
+    const items = await plugin.fetchItems({
+      userId,
+      cardId: card.id,
+      card,
+      config: parsedConfig,
+    });
+
+    const sortedItems = plugin.sortItems(items, card.sortBy, card.sortOrder);
+    return plugin.mapToCardView(sortedItems).slice(0, 20);
+  }
+
+  private parseConfig(configJson: string | null) {
+    if (!configJson) {
+      return {};
+    }
+    return JSON.parse(configJson) as unknown;
+  }
+}
