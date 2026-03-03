@@ -23,6 +23,18 @@ export interface TapdFetchOptions {
   status?: string;
 }
 
+
+function sanitizeText(value: string): string {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function mapTapdStatusToPluginStatus(status: string): 'todo' | 'done' | 'completed' {
   const lowerStatus = status?.toLowerCase() || '';
   if (lowerStatus === 'done' || lowerStatus === 'completed' || lowerStatus === 'closed') {
@@ -106,7 +118,7 @@ export class TapdPlugin implements DataSourcePlugin {
   private mapRequirementToPluginItem(req: any): PluginItem {
     return {
       id: req.id,
-      content: `${req.name}\n\n${req.description || ''}`,
+      content: sanitizeText(`${req.name} ${req.description || ''}`),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(req.status),
@@ -120,7 +132,7 @@ export class TapdPlugin implements DataSourcePlugin {
   private mapBugToPluginItem(bug: any): PluginItem {
     return {
       id: bug.id,
-      content: `[BUG] ${bug.title}\n\n${bug.description || ''}`,
+      content: sanitizeText(`[BUG] ${bug.title} ${bug.description || ''}`),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(bug.status),

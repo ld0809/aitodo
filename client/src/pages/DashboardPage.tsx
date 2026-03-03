@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
@@ -32,6 +32,7 @@ export function DashboardPage() {
   const CARD_H = 3;
   const GRID_MARGIN_Y = 16;
   const [viewportHeight, setViewportHeight] = useState<number>(window.innerHeight);
+  const deleteCardPromptAtRef = useRef(0);
 
   useEffect(() => {
     const onResize = () => setViewportHeight(window.innerHeight);
@@ -259,6 +260,12 @@ export function DashboardPage() {
   };
 
   const handleDeleteCard = (id: string) => {
+    const now = Date.now();
+    if (now - deleteCardPromptAtRef.current < 1000) {
+      return;
+    }
+    deleteCardPromptAtRef.current = now;
+
     if (confirm('确定要删除这个卡片吗？')) {
       deleteCardMutation.mutate(id);
     }
