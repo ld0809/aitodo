@@ -14,6 +14,7 @@ export interface TapdPluginConfig {
 }
 
 export interface TapdFetchOptions {
+  contentType?: 'all' | 'requirements' | 'bugs';
   projectId?: string;
   iterationId?: string;
   bugTitle?: string;
@@ -66,30 +67,35 @@ export class TapdPlugin implements DataSourcePlugin {
 
     // Fetch requirements if projectId is specified
     if (projectId) {
-      const requirements = await this.tapdService.fetchRequirements({
-        workspaceId: config.workspaceId,
-        projectId,
-        iterationId: options.iterationId,
-        ownerIds: options.ownerIds,
-        status: options.status,
-      });
+      const contentType = options.contentType || 'all';
 
-      for (const req of requirements) {
-        items.push(this.mapRequirementToPluginItem(req));
+      if (contentType === 'all' || contentType === 'requirements') {
+        const requirements = await this.tapdService.fetchRequirements({
+          workspaceId: config.workspaceId,
+          projectId,
+          iterationId: options.iterationId,
+          ownerIds: options.ownerIds,
+          status: options.status,
+        });
+
+        for (const req of requirements) {
+          items.push(this.mapRequirementToPluginItem(req));
+        }
       }
 
-      // Fetch bugs
-      const bugs = await this.tapdService.fetchBugs({
-        workspaceId: config.workspaceId,
-        projectId,
-        title: options.bugTitle,
-        versionId: options.versionId,
-        ownerIds: options.ownerIds,
-        status: options.status,
-      });
+      if (contentType === 'all' || contentType === 'bugs') {
+        const bugs = await this.tapdService.fetchBugs({
+          workspaceId: config.workspaceId,
+          projectId,
+          title: options.bugTitle,
+          versionId: options.versionId,
+          ownerIds: options.ownerIds,
+          status: options.status,
+        });
 
-      for (const bug of bugs) {
-        items.push(this.mapBugToPluginItem(bug));
+        for (const bug of bugs) {
+          items.push(this.mapBugToPluginItem(bug));
+        }
       }
     }
 
