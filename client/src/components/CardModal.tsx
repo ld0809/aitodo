@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Card, Tag } from '../types';
 import type { CreateCardDto, UpdateCardDto } from '../api/cards';
+import { getUsers, type TapdUser } from '../api/tapd';
 import './Modal.css';
 
 interface CardModalProps {
@@ -17,12 +18,14 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState('');
-  
-  // TAPD 配置
+
   const [pluginType, setPluginType] = useState<'local_todo' | 'tapd'>('local_todo');
   const [workspaceId, setWorkspaceId] = useState('');
   const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
   const [iterationId, setIterationId] = useState('');
+  const [ownerIds, setOwnerIds] = useState<string[]>([]);
+  const [tapdUsers, setTapdUsers] = useState<TapdUser[]>([]);
+  const [userKeyword, setUserKeyword] = useState('');
 
   useEffect(() => {
     if (card) {
@@ -30,8 +33,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
       setSortBy(card.sortBy);
       setSortOrder(card.sortOrder);
       setSelectedTagIds((Array.isArray(card.tags) ? card.tags : []).map((t) => t.id));
-      
-      // 解析 pluginConfig
+
       if (card.pluginType === 'tapd' && card.pluginConfigJson) {
         try {
           const config = JSON.parse(card.pluginConfigJson);
@@ -39,14 +41,53 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
           setWorkspaceId(config.workspaceId || '');
           setContentType(config.contentType || 'all');
           setIterationId(config.iterationId || '');
+          setOwnerIds(Array.isArray(config.ownerIds) ? config.ownerIds : []);
         } catch {
           setPluginType('tapd');
+          setOwnerIds([]);
         }
       } else {
         setPluginType(card.pluginType === 'tapd' ? 'tapd' : 'local_todo');
+        setOwnerIds([]);
       }
     }
   }, [card]);
+
+  useEffect(() => {
+    if (pluginType !== 'tapd') {
+      setTapdUsers([]);
+      return;
+    }
+
+    const projectId = workspaceId.trim();
+    if (!projectId) {
+      setTapdUsers([]);
+      return;
+    }
+
+    getUsers(projectId)
+      .then((users) => setTapdUsers(Array.isArray(users) ? users : []))
+      .catch(() => setTapdUsers([]));
+  }, [pluginType, workspaceId]);
+
+
+  const filteredUsers = useMemo(() => {
+    const keyword = userKeyword.trim().toLowerCase();
+    if (!keyword) return tapdUsers;
+    return tapdUsers.filter((user) => {
+      const label = `${user.name || ''} ${user.nickname || ''} ${user.id || ''}`.toLowerCase();
+      return label.includes(keyword);
+    });
+  }, [tapdUsers, userKeyword]);
+
+  const selectedUsers = useMemo(
+    () => tapdUsers.filter((user) => ownerIds.includes(user.id)),
+    [tapdUsers, ownerIds],
+  );
+
+  const toggleOwner = (id: string) => {
+    setOwnerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +99,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
         workspaceId: workspaceId.trim(),
         contentType,
         iterationId: iterationId.trim() || undefined,
+        ownerIds,
       };
     }
 
@@ -68,7 +110,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
       tagIds: selectedTagIds,
       pluginType,
       pluginConfig,
-    };
+    } as CreateCardDto | UpdateCardDto;
 
     onSave(data);
   };
@@ -110,11 +152,11 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
                 required
               />
             </div>
-            
+
             <div className="mb">
               <label>数据来源</label>
-              <select 
-                value={pluginType} 
+              <select
+                value={pluginType}
                 onChange={(e) => setPluginType(e.target.value as 'local_todo' | 'tapd')}
                 style={{ width: '100%' }}
               >
@@ -126,7 +168,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
             {pluginType === 'tapd' && (
               <>
                 <div className="mb">
-                  <label>Workspace ID <span style={{color: '#999'}}>(必填)</span></label>
+                  <label>Workspace ID <span style={{ color: '#999' }}>(必填)</span></label>
                   <input
                     type="text"
                     placeholder="例如: 54330609"
@@ -138,7 +180,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
 
                 <div className="mb">
                   <label>展示内容</label>
-                  <select 
+                  <select
                     value={contentType}
                     onChange={(e) => setContentType(e.target.value as 'all' | 'requirements' | 'bugs')}
                     style={{ width: '100%' }}
@@ -150,13 +192,53 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
                 </div>
 
                 <div className="mb">
-                  <label>迭代 ID <span style={{color: '#999'}}>(可选)</span></label>
+                  <label>迭代 ID <span style={{ color: '#999' }}>(可选)</span></label>
                   <input
                     type="text"
                     placeholder="不填则显示全部迭代"
                     value={iterationId}
                     onChange={(e) => setIterationId(e.target.value)}
                   />
+                </div>
+
+                <div className="mb">
+                  <label>处理人过滤 <span style={{ color: '#999' }}>(可多选)</span></label>
+                  <div className="owner-filter-box">
+                    <div className="owner-filter-toolbar">
+                      <input
+                        type="text"
+                        placeholder="搜索姓名或ID"
+                        value={userKeyword}
+                        onChange={(e) => setUserKeyword(e.target.value)}
+                      />
+                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds(filteredUsers.map((u) => u.id))}>全选</button>
+                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds([])}>清空</button>
+                    </div>
+
+                    {selectedUsers.length > 0 && (
+                      <div className="owner-selected-list">
+                        {selectedUsers.map((user) => (
+                          <span key={user.id} className="owner-chip" onClick={() => toggleOwner(user.id)}>
+                            {(user.name || user.nickname || user.id)} ×
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="owner-options">
+                      {filteredUsers.map((u) => (
+                        <label key={u.id} className="owner-option">
+                          <input
+                            type="checkbox"
+                            checked={ownerIds.includes(u.id)}
+                            onChange={() => toggleOwner(u.id)}
+                          />
+                          <span>{(u.name || u.nickname || u.id)}</span>
+                        </label>
+                      ))}
+                      {filteredUsers.length === 0 && <div className="owner-empty">无匹配成员</div>}
+                    </div>
+                  </div>
                 </div>
               </>
             )}

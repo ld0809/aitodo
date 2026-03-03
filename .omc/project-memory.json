@@ -1,0 +1,195 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1772525112534,
+  "projectRoot": "/Volumes/external/code/nodejs/todo_manager_openclaw_cc_mm",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "backend": {
+      "path": "backend",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1772525112507,
+      "keyFiles": [
+        "jest-e2e.json",
+        "nest-cli.json",
+        "package-lock.json",
+        "package.json",
+        "tsconfig.build.json"
+      ]
+    },
+    "client": {
+      "path": "client",
+      "purpose": null,
+      "fileCount": 13,
+      "lastAccessed": 1772525112507,
+      "keyFiles": [
+        "README.md",
+        "e2e.spec.ts",
+        "eslint.config.js",
+        "index.html",
+        "package-lock.json"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 3,
+      "lastAccessed": 1772525112508,
+      "keyFiles": [
+        "ARCHITECTURE.md",
+        "PRD.md"
+      ]
+    },
+    "backend/data": {
+      "path": "backend/data",
+      "purpose": "Data files",
+      "fileCount": 2,
+      "lastAccessed": 1772525112509,
+      "keyFiles": [
+        "app.db",
+        "todo_manager.db"
+      ]
+    },
+    "backend/dist": {
+      "path": "backend/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 6,
+      "lastAccessed": 1772525112516,
+      "keyFiles": [
+        "app.module.js",
+        "app.module.js.map",
+        "main.js"
+      ]
+    },
+    "backend/node_modules": {
+      "path": "backend/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1772525112518,
+      "keyFiles": []
+    },
+    "backend/src": {
+      "path": "backend/src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1772525112519,
+      "keyFiles": [
+        "app.module.ts",
+        "main.ts"
+      ]
+    },
+    "client/dist": {
+      "path": "client/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 2,
+      "lastAccessed": 1772525112519,
+      "keyFiles": [
+        "index.html",
+        "vite.svg"
+      ]
+    },
+    "client/node_modules": {
+      "path": "client/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1772525112520,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "backend/src/plugins/adapters/tapd.service.ts",
+      "accessCount": 9,
+      "lastAccessed": 1772532721977,
+      "type": "file"
+    },
+    {
+      "path": "client/src/components/CardModal.tsx",
+      "accessCount": 6,
+      "lastAccessed": 1772530441224,
+      "type": "file"
+    },
+    {
+      "path": "client/src/api/tapd.ts",
+      "accessCount": 6,
+      "lastAccessed": 1772530445875,
+      "type": "file"
+    },
+    {
+      "path": "client/src/api/cards.ts",
+      "accessCount": 4,
+      "lastAccessed": 1772530361947,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/tapd/tapd.controller.ts",
+      "accessCount": 4,
+      "lastAccessed": 1772532705968,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/main.ts",
+      "accessCount": 2,
+      "lastAccessed": 1772530325901,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/cards/cards.controller.ts",
+      "accessCount": 2,
+      "lastAccessed": 1772530370586,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/cards/dto/create-card.dto.ts",
+      "accessCount": 2,
+      "lastAccessed": 1772530374780,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/cards/dto/update-card.dto.ts",
+      "accessCount": 2,
+      "lastAccessed": 1772530398002,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/tapd/tapd-config.service.ts",
+      "accessCount": 1,
+      "lastAccessed": 1772530228914,
+      "type": "file"
+    },
+    {
+      "path": "backend/src/cards/cards.service.ts",
+      "accessCount": 1,
+      "lastAccessed": 1772530374832,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Todo } from '../database/entities/todo.entity';
+import { TapdConfig } from '../database/entities/tapd-config.entity';
 import { LocalTodoPlugin } from './local-todo.plugin';
 import { TapdPlugin } from './adapters/tapd.plugin';
 import { JiraPlugin } from './adapters/jira.plugin';
@@ -11,7 +12,7 @@ import { PluginExecutor } from './plugin-executor.service';
 import { PluginRegistry } from './plugin-registry.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Todo])],
+  imports: [TypeOrmModule.forFeature([Todo, TapdConfig])],
   providers: [
     PluginRegistry,
     LocalTodoPlugin,

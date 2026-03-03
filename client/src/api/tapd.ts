@@ -77,7 +77,7 @@ export const getIterations = async (projectId: string): Promise<TapdIteration[]>
 // 获取用户列表
 export const getUsers = async (projectId: string): Promise<TapdUser[]> => {
   const { apiBaseUrl, apiToken } = useTapdStore.getState();
-  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/users', {
+  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/users?workspaceId=' + projectId, {
     headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined },
   });
   return response.data;

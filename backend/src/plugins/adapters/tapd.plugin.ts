@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { DataSourcePlugin } from '../interfaces/data-source-plugin.interface';
 import { PluginFetchContext } from '../interfaces/data-source-plugin.interface';
 import { PluginItem, CardTodoView } from '../types/plugin-item.type';
 import { TapdService } from './tapd.service';
+import { TapdConfig as TapdConfigEntity } from '../../database/entities/tapd-config.entity';
 
-export interface TapdConfig {
+export interface TapdPluginConfig {
   apiUrl: string;
   apiToken: string;
   workspaceId: string;
@@ -34,25 +37,38 @@ function mapTapdStatusToPluginStatus(status: string): 'todo' | 'done' | 'complet
 export class TapdPlugin implements DataSourcePlugin {
   type = 'tapd';
 
-  constructor(private readonly tapdService: TapdService) {}
+  constructor(
+    private readonly tapdService: TapdService,
+    @InjectRepository(TapdConfigEntity)
+    private readonly tapdConfigRepository: Repository<TapdConfigEntity>,
+  ) {}
 
   async validateConfig(config: unknown): Promise<void> {
-    const tapdConfig = config as TapdConfig;
-    if (!tapdConfig.apiUrl || !tapdConfig.apiToken || !tapdConfig.workspaceId) {
-      throw new Error('Invalid TAPD configuration: apiUrl, apiToken, and workspaceId are required');
+    const tapdConfig = config as TapdPluginConfig;
+    if (!tapdConfig.workspaceId) {
+      throw new Error('Invalid TAPD configuration: workspaceId is required');
     }
   }
 
   async fetchItems(ctx: PluginFetchContext): Promise<PluginItem[]> {
-    const config = ctx.config as TapdConfig;
+    if (!this.tapdService.getConfig()) {
+      const defaultConfig = await this.tapdConfigRepository.findOne({ where: { isDefault: true } });
+      if (!defaultConfig) {
+        return [];
+      }
+      this.tapdService.setConfig(defaultConfig.apiUrl, defaultConfig.apiToken, defaultConfig.workspaceId);
+    }
+    const config = ctx.config as TapdPluginConfig;
     const options = ctx.config as TapdFetchOptions;
     const items: PluginItem[] = [];
 
+    const projectId = options.projectId || config.workspaceId;
+
     // Fetch requirements if projectId is specified
-    if (options.projectId) {
+    if (projectId) {
       const requirements = await this.tapdService.fetchRequirements({
         workspaceId: config.workspaceId,
-        projectId: options.projectId,
+        projectId,
         iterationId: options.iterationId,
         ownerIds: options.ownerIds,
         status: options.status,
@@ -65,7 +81,7 @@ export class TapdPlugin implements DataSourcePlugin {
       // Fetch bugs
       const bugs = await this.tapdService.fetchBugs({
         workspaceId: config.workspaceId,
-        projectId: options.projectId,
+        projectId,
         title: options.bugTitle,
         versionId: options.versionId,
         ownerIds: options.ownerIds,

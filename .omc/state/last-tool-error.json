@@ -1,0 +1,7 @@
+{
+  "tool_name": "WebFetch",
+  "tool_input_preview": "{\"url\":\"https://open.tapd.cn/document/api-doc/API%E6%96%87%E6%A1%A3/api_reference/workspace/users.html\",\"prompt\":\"Extract the correct API endpoint URL, required parameters, and response structure for ...",
+  "error": "Unable to verify if domain open.tapd.cn is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.",
+  "timestamp": "2026-03-03T10:11:39.449Z",
+  "retry_count": 1
+}

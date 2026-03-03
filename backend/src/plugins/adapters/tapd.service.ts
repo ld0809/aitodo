@@ -171,16 +171,22 @@ export class TapdService {
     }
 
     try {
-      const response = await this.client.get(`/projects?workspace_id=${workspaceId}/${projectId}/users`);
-      const rawData = response.data?.data || response.data || [];
-      // TAPD 返回格式: [{ "Story": {...} }, ...]
-      const data = rawData.map((item: any) => item.Story || item);
-      
+      const response = await this.client.get('/workspaces/users', {
+        params: {
+          workspace_id: workspaceId,
+          fields: 'user,user_id,name,email',
+        },
+      });
+      const payload = response.data?.data ?? response.data ?? [];
+      const rawList = Array.isArray(payload) ? payload : [];
+      const data = rawList
+        .map((item: any) => item?.UserWorkspace || item)
+        .filter((item: any) => item && (item.user_id || item.user));
+
       return data.map((item: any) => ({
-        iterationId: item.iteration_id || item.iterationId,
-        id: item.id || item.user_id,
-        name: item.name,
-        email: item.email || item.username,
+        id: String(item.user_id || item.user),
+        name: item.name || item.user || '',
+        email: item.email || '',
       }));
     } catch (error) {
       console.error('Failed to fetch users:', error);
@@ -238,11 +244,16 @@ export class TapdService {
       const data = rawData.map((item: any) => item.Story || item);
 
       const doneStatuses = params.status ? new Set<string>() : await this.getDoneStoryStatuses(params.workspaceId);
+      const doneLabelPattern = /(已完成|已上线|已关闭|已拒绝|关闭|完成|上线|终止|已发布|已实现|done|closed|resolved|rejected)/i;
       const filteredData = params.status
         ? data
         : data.filter((item: any) => {
-            const status = String(item.status || '').toLowerCase();
-            return status && !doneStatuses.has(status);
+            const rawStatus = String(item.status || '');
+            const status = rawStatus.toLowerCase();
+            if (!status) return false;
+            if (doneStatuses.has(status)) return false;
+            if (doneLabelPattern.test(rawStatus)) return false;
+            return true;
           });
 
       return filteredData.map((item: any) => ({

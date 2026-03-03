@@ -232,3 +232,101 @@
 .color-option.selected {
   border-color: var(--txt);
 }
+
+.owner-filter-box {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg);
+  padding: 10px;
+}
+
+.owner-filter-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.owner-filter-toolbar input {
+  flex: 1;
+  min-width: 0;
+}
+
+.owner-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.owner-chip {
+  font-size: 12px;
+  background: var(--accent2);
+  color: var(--accent);
+  border: 1px solid var(--accent2);
+  border-radius: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.owner-options {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 10px;
+}
+
+@media (max-width: 640px) {
+  .owner-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.owner-empty {
+  font-size: 12px;
+  color: var(--txt3);
+  padding: 6px 2px;
+}
+
+
+.owner-action-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--txt2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.owner-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.owner-option {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  font-size: 12px;
+  padding: 3px 2px;
+  line-height: 1.2;
+}
+
+.owner-option input[type='checkbox'] {
+  margin: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.owner-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

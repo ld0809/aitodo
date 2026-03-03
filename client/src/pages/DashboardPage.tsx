@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
 import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
+import { getRequirements, getBugs, type TapdRequirement, type TapdBug } from '../api/tapd';
 import type { Todo, Card } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
@@ -28,6 +29,25 @@ export function DashboardPage() {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
+  const CARD_H = 3;
+  const GRID_MARGIN_Y = 16;
+  const [viewportHeight, setViewportHeight] = useState<number>(window.innerHeight);
+
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const adaptiveRowHeight = useMemo(() => {
+    const headerHeight = 72;
+    const mainPaddingTopBottom = 48;
+    const safetyBuffer = 120;
+    const availableHeight = Math.max(300, viewportHeight - headerHeight - mainPaddingTopBottom - safetyBuffer);
+    const perCardHeight = (availableHeight - GRID_MARGIN_Y) / 2;
+    const computed = Math.floor((perCardHeight - (CARD_H - 1) * GRID_MARGIN_Y) / CARD_H);
+    return Math.max(28, Math.min(52, computed));
+  }, [viewportHeight]);
 
   const { data: todos = [], isLoading: todosLoading } = useQuery({
     queryKey: ['todos'],
@@ -37,6 +57,27 @@ export function DashboardPage() {
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
     queryKey: ['cards'],
     queryFn: () => cardsApi.getAll().then((res) => res.data),
+  });
+
+
+  const { data: tapdCardTodos = {} } = useQuery({
+    queryKey: ['tapd-card-todos', (Array.isArray(cards) ? cards : []).map((c: Card) => `${c.id}:${c.updatedAt}`).join('|')],
+    enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd'),
+    queryFn: async () => {
+      const tapdCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd');
+      const settled = await Promise.allSettled(
+        tapdCards.map(async (card: Card) => {
+          const res = await cardsApi.getTodos(card.id);
+          return [card.id, Array.isArray(res.data) ? res.data : []] as const;
+        }),
+      );
+
+      const entries = settled
+        .filter((item): item is PromiseFulfilledResult<readonly [string, Todo[]]> => item.status === 'fulfilled')
+        .map((item) => item.value);
+
+      return Object.fromEntries(entries) as Record<string, Todo[]>;
+    },
   });
 
   const { data: tags = [] } = useQuery({
@@ -80,6 +121,7 @@ export function DashboardPage() {
     mutationFn: (data: CreateCardDto) => cardsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
       setShowCardModal(false);
     },
   });
@@ -89,6 +131,7 @@ export function DashboardPage() {
       cardsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
       setShowCardModal(false);
       setEditingCard(null);
     },
@@ -163,9 +206,37 @@ export function DashboardPage() {
   const handleSaveCard = (data: CreateCardDto | UpdateCardDto) => {
     if (editingCard) {
       updateCardMutation.mutate({ id: editingCard.id, data: data as UpdateCardDto });
-    } else {
-      createCardMutation.mutate(data as CreateCardDto);
+      return;
     }
+
+    const DEFAULT_W = 4;
+    const DEFAULT_H = CARD_H;
+    const COLS = 12;
+    const sortedCards = [...(Array.isArray(cards) ? cards : [])].sort((a, b) =>
+      a.y === b.y ? a.x - b.x : a.y - b.y
+    );
+
+    let nextX = 0;
+    let nextY = 0;
+    if (sortedCards.length > 0) {
+      const last = sortedCards[sortedCards.length - 1];
+      const lastW = last.w || DEFAULT_W;
+      const lastH = last.h || DEFAULT_H;
+      nextX = (last.x || 0) + lastW;
+      nextY = last.y || 0;
+      if (nextX + DEFAULT_W > COLS) {
+        nextX = 0;
+        nextY = (last.y || 0) + lastH;
+      }
+    }
+
+    createCardMutation.mutate({
+      ...(data as CreateCardDto),
+      x: nextX,
+      y: nextY,
+      w: DEFAULT_W,
+      h: DEFAULT_H,
+    });
   };
 
   const handleSaveTag = (data: CreateTagDto | UpdateTagDto, id?: string) => {
@@ -199,16 +270,27 @@ export function DashboardPage() {
     }
   };
 
-  const handleLayoutChange = (layout: any[]) => {
-    layout.forEach((item) => {
-      const card = cards.find((c: Card) => c.id === item.i);
-      if (card && (card.x !== item.x || card.y !== item.y || card.w !== item.w || card.h !== item.h)) {
-        updateCardLayoutMutation.mutate({ id: item.i, layout: item });
-      }
+  const handleDragStop = (_layout: readonly any[], _oldItem: any, newItem: any) => {
+    const card = cards.find((c: Card) => c.id === newItem.i);
+    if (!card) return;
+    if (card.x === newItem.x && card.y === newItem.y) return;
+
+    updateCardLayoutMutation.mutate({
+      id: newItem.i,
+      layout: {
+        i: newItem.i,
+        x: newItem.x,
+        y: newItem.y,
+        w: card.w || 4,
+        h: CARD_H,
+      },
     });
   };
 
   const getTodosForCard = (card: Card) => {
+    if (card.pluginType === 'tapd') {
+      return tapdCardTodos[card.id] || [];
+    }
     if (!card.tags?.length) return todos;
     const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((t) => t.id);
     return todos.filter((todo) =>
@@ -221,9 +303,10 @@ export function DashboardPage() {
     x: card.x || 0,
     y: card.y || 0,
     w: card.w || 4,
-    h: card.h || 4,
+    h: CARD_H,
     minW: 2,
-    minH: 2,
+    minH: CARD_H,
+    maxH: CARD_H,
   }));
 
   if (todosLoading || cardsLoading) {
@@ -242,6 +325,7 @@ export function DashboardPage() {
 
       <main className="main">
         <GridLayout
+          key={`grid-${adaptiveRowHeight}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join("|")}`}
           verticalCompact={false}
           compactType={null}
           isBounded
@@ -249,14 +333,16 @@ export function DashboardPage() {
           className="layout"
           layout={gridLayout}
           cols={12}
-          rowHeight={80}
+          rowHeight={adaptiveRowHeight}
           width={1200}
-          onLayoutChange={handleLayoutChange}
+          margin={[16, GRID_MARGIN_Y]}
+          onDragStop={handleDragStop}
           draggableHandle=".card-header"
-          resizeHandles={['se']}
+          draggableCancel=".card-actions, .card-actions button"
+          isResizable={false}
         >
           {(Array.isArray(cards) ? cards : []).map((card: Card) => (
-            <div key={card.id} className="grid-card">
+            <div key={card.id} className="grid-card-inner">
               <div className="card">
                 <div className="card-header">
                   <div className="card-title">
@@ -264,9 +350,9 @@ export function DashboardPage() {
                     <span className="count">{getTodosForCard(card).length}</span>
                   </div>
                   <div className="card-actions">
-                    <button onClick={() => handleOpenTodoModal(undefined, card)} title="添加待办">+</button>
-                    <button onClick={() => handleOpenCardModal(card)}>✎</button>
-                    <button onClick={() => handleDeleteCard(card.id)}>🗑</button>
+                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
+                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenCardModal(card); }}>✎</button>
+                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCard(card.id); }}>🗑</button>
                   </div>
                 </div>
                 <div className="card-body">

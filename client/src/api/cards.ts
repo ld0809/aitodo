@@ -8,6 +8,8 @@ export interface CreateCardDto {
   tagIds?: string[];
   x?: number;
   y?: number;
+  w?: number;
+  h?: number;
 }
 
 export interface UpdateCardDto {
@@ -35,6 +37,8 @@ export const cardsApi = {
     apiClient.patch<Card>(`/cards/${id}`, data),
 
   delete: (id: string) => apiClient.delete(`/cards/${id}`),
+
+  getTodos: (id: string) => apiClient.get(`/cards/${id}/todos`),
 
   updateLayout: (id: string, data: UpdateLayoutDto) =>
     apiClient.patch<Card>(`/cards/${id}/layout`, data),
