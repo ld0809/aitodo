@@ -118,13 +118,14 @@ export class TapdPlugin implements DataSourcePlugin {
   private mapRequirementToPluginItem(req: any): PluginItem {
     return {
       id: req.id,
-      content: sanitizeText(`${req.name} ${req.description || ''}`),
+      content: sanitizeText(req.name),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(req.status),
       createdAt: new Date(req.created),
       updatedAt: new Date(req.modified),
       tags: [],
+      url: req.url,
     };
   }
 
@@ -132,13 +133,14 @@ export class TapdPlugin implements DataSourcePlugin {
   private mapBugToPluginItem(bug: any): PluginItem {
     return {
       id: bug.id,
-      content: sanitizeText(`[BUG] ${bug.title} ${bug.description || ''}`),
+      content: sanitizeText(`[BUG] ${bug.title}`),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(bug.status),
       createdAt: new Date(bug.created),
       updatedAt: new Date(bug.modified),
       tags: [],
+      url: bug.url,
     };
   }
 
@@ -172,6 +174,7 @@ export class TapdPlugin implements DataSourcePlugin {
       executeAt: item.executeAt,
       status: item.status,
       tags: item.tags,
+      url: item.url,
     }));
   }
 }

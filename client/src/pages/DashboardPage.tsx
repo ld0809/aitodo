@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
@@ -28,11 +28,11 @@ export function DashboardPage() {
   const [showTagModal, setShowTagModal] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const CARD_H = 3;
   const GRID_MARGIN_Y = 16;
   const [viewportHeight, setViewportHeight] = useState<number>(window.innerHeight);
-  const deleteCardPromptAtRef = useRef(0);
 
   useEffect(() => {
     const onResize = () => setViewportHeight(window.innerHeight);
@@ -260,15 +260,13 @@ export function DashboardPage() {
   };
 
   const handleDeleteCard = (id: string) => {
-    const now = Date.now();
-    if (now - deleteCardPromptAtRef.current < 1000) {
-      return;
-    }
-    deleteCardPromptAtRef.current = now;
+    setPendingDeleteCardId(id);
+  };
 
-    if (confirm('确定要删除这个卡片吗？')) {
-      deleteCardMutation.mutate(id);
-    }
+  const confirmDeleteCard = () => {
+    if (!pendingDeleteCardId) return;
+    deleteCardMutation.mutate(pendingDeleteCardId);
+    setPendingDeleteCardId(null);
   };
 
   const handleDeleteTag = (id: string) => {
@@ -405,6 +403,23 @@ export function DashboardPage() {
             setEditingCard(null);
           }}
         />
+      )}
+
+
+      {pendingDeleteCardId && (
+        <div className="overlay open" onClick={() => setPendingDeleteCardId(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">删除卡片</div>
+              <button className="modal-close" onClick={() => setPendingDeleteCardId(null)}>×</button>
+            </div>
+            <div className="modal-body">确定要删除这个卡片吗？</div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setPendingDeleteCardId(null)}>取消</button>
+              <button type="button" className="btn btn-primary" onClick={confirmDeleteCard}>删除</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showTagModal && (

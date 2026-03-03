@@ -47,6 +47,7 @@ export interface Card {
   todos?: Todo[];
   createdAt: string;
   updatedAt: string;
+  url?: string;
 }
 
 export interface AuthResponse {

@@ -13,6 +13,7 @@ export interface PluginItem {
   createdAt: Date;
   updatedAt: Date;
   tags: PluginTagView[];
+  url?: string;
 }
 
 export interface CardTodoView {
@@ -22,4 +23,5 @@ export interface CardTodoView {
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';
   tags: PluginTagView[];
+  url?: string;
 }
