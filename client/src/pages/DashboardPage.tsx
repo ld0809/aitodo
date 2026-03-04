@@ -61,16 +61,20 @@ export function DashboardPage() {
   });
 
 
+  const tapdCardsKey = (Array.isArray(cards) ? cards : [])
+    .filter((card: Card) => card.pluginType === 'tapd')
+    .map((card: Card) => `${card.id}:${card.updatedAt}`)
+    .sort()
+    .join('|');
+
   const { data: tapdCardTodos = {} } = useQuery({
-    queryKey: ['tapd-card-todos', (Array.isArray(cards) ? cards : []).map((c: Card) => `${c.id}:${c.updatedAt}`).join('|')],
+    queryKey: ['tapd-card-todos', tapdCardsKey],
     enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd'),
     queryFn: async () => {
       const tapdCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd');
-      console.log('[TAPD Frontend] Fetching for cards:', tapdCards.map(c => c.id));
       const settled = await Promise.allSettled(
         tapdCards.map(async (card: Card) => {
           const res = await cardsApi.getTodos(card.id);
-          console.log('[TAPD Frontend] Card:', card.id, 'response:', res.data);
           return [card.id, Array.isArray(res.data) ? res.data : []] as const;
         }),
       );
@@ -143,8 +147,8 @@ export function DashboardPage() {
   const deleteCardMutation = useMutation({
     mutationFn: (id: string) => cardsApi.delete(id),
     onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['tapd-card-todos'] });
       queryClient.invalidateQueries({ queryKey: ['cards'] });
-      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
     },
   });
 
