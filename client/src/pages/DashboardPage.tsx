@@ -142,6 +142,7 @@ export function DashboardPage() {
     mutationFn: (id: string) => cardsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
     },
   });
 

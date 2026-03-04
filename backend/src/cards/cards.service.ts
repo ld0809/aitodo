@@ -106,8 +106,10 @@ export class CardsService {
   }
 
   async remove(userId: string, id: string) {
-    const card = await this.findOne(userId, id);
-    await this.cardRepository.remove(card);
+    const result = await this.cardRepository.delete({ id, userId });
+    if (!result.affected) {
+      throw new NotFoundException('card not found');
+    }
 
     return { id };
   }
