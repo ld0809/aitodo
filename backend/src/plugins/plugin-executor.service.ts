@@ -7,19 +7,26 @@ export class PluginExecutor {
   constructor(private readonly pluginRegistry: PluginRegistry) {}
 
   async fetchCardTodos(userId: string, card: Card) {
-    const plugin = this.pluginRegistry.get(card.pluginType);
-    const parsedConfig = this.parseConfig(card.pluginConfigJson);
+    try {
+      const plugin = this.pluginRegistry.get(card.pluginType);
+      const parsedConfig = this.parseConfig(card.pluginConfigJson);
 
-    await plugin.validateConfig(parsedConfig);
-    const items = await plugin.fetchItems({
-      userId,
-      cardId: card.id,
-      card,
-      config: parsedConfig,
-    });
+      console.log('[PluginExecutor] cardId:', card.id, 'pluginType:', card.pluginType, 'config:', parsedConfig);
 
-    const sortedItems = plugin.sortItems(items, card.sortBy, card.sortOrder);
-    return plugin.mapToCardView(sortedItems).slice(0, 20);
+      await plugin.validateConfig(parsedConfig);
+      const items = await plugin.fetchItems({
+        userId,
+        cardId: card.id,
+        card,
+        config: parsedConfig,
+      });
+
+      const sortedItems = plugin.sortItems(items, card.sortBy, card.sortOrder);
+      return plugin.mapToCardView(sortedItems).slice(0, 20);
+    } catch (error) {
+      console.error('[PluginExecutor] Error fetching card todos:', error);
+      throw error;
+    }
   }
 
   private parseConfig(configJson: string | null) {
