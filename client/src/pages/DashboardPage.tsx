@@ -66,9 +66,11 @@ export function DashboardPage() {
     enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd'),
     queryFn: async () => {
       const tapdCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd');
+      console.log('[TAPD Frontend] Fetching for cards:', tapdCards.map(c => c.id));
       const settled = await Promise.allSettled(
         tapdCards.map(async (card: Card) => {
           const res = await cardsApi.getTodos(card.id);
+          console.log('[TAPD Frontend] Card:', card.id, 'response:', res.data);
           return [card.id, Array.isArray(res.data) ? res.data : []] as const;
         }),
       );
