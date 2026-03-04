@@ -267,7 +267,11 @@ export class TapdService {
         modified: item.modified,
         url: item.url || `https://www.tapd.cn/tapd_fe/${this.config?.workspaceId}/story/detail/${item.id}`,
       }));
-    } catch (error) {
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401) {
+        throw new Error('TAPD authentication failed (401). Please verify API Token in TAPD config.');
+      }
       console.error('Failed to fetch requirements:', error);
       return [];
     }
@@ -317,7 +321,11 @@ export class TapdService {
         url: item.url || `https://www.tapd.cn/tapd_fe/${this.config?.workspaceId}/bug/detail/${item.id || item.bug_id}`,
         version: item.version || '',
       }));
-    } catch (error) {
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401) {
+        throw new Error('TAPD authentication failed (401). Please verify API Token in TAPD config.');
+      }
       console.error('Failed to fetch bugs:', error);
       return [];
     }
