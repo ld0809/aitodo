@@ -64,9 +64,15 @@ export class TapdPlugin implements DataSourcePlugin {
   }
 
   async fetchItems(ctx: PluginFetchContext): Promise<PluginItem[]> {
+    console.log('[TAPD Plugin] fetchItems called, cardId:', ctx.cardId);
+    console.log('[TAPD Plugin] ctx.config:', JSON.stringify(ctx.config));
+    
     if (!this.tapdService.getConfig()) {
+      console.log('[TAPD Plugin] No config set, trying to find default...');
       const defaultConfig = await this.tapdConfigRepository.findOne({ where: { isDefault: true } });
+      console.log('[TAPD Plugin] Default config found:', defaultConfig ? { id: defaultConfig.id, workspaceId: defaultConfig.workspaceId } : 'NULL');
       if (!defaultConfig) {
+        console.log('[TAPD Plugin] No default config, returning empty');
         return [];
       }
       this.tapdService.setConfig(defaultConfig.apiUrl, defaultConfig.apiToken, defaultConfig.workspaceId);
@@ -76,12 +82,14 @@ export class TapdPlugin implements DataSourcePlugin {
     const items: PluginItem[] = [];
 
     const projectId = options.projectId || config.workspaceId;
+    console.log('[TAPD Plugin] projectId:', projectId, 'contentType:', options.contentType);
 
     // Fetch requirements if projectId is specified
     if (projectId) {
       const contentType = options.contentType || 'all';
 
       if (contentType === 'all' || contentType === 'requirements') {
+        console.log('[TAPD Plugin] Fetching requirements...');
         const requirements = await this.tapdService.fetchRequirements({
           workspaceId: config.workspaceId,
           projectId,
@@ -89,6 +97,7 @@ export class TapdPlugin implements DataSourcePlugin {
           ownerIds: options.ownerIds,
           status: options.status,
         });
+        console.log('[TAPD Plugin] Requirements fetched:', requirements.length, 'items');
 
         for (const req of requirements) {
           items.push(this.mapRequirementToPluginItem(req));
@@ -96,6 +105,7 @@ export class TapdPlugin implements DataSourcePlugin {
       }
 
       if (contentType === 'all' || contentType === 'bugs') {
+        console.log('[TAPD Plugin] Fetching bugs...');
         const bugs = await this.tapdService.fetchBugs({
           workspaceId: config.workspaceId,
           projectId,
@@ -104,6 +114,7 @@ export class TapdPlugin implements DataSourcePlugin {
           ownerIds: options.ownerIds,
           status: options.status,
         });
+        console.log('[TAPD Plugin] Bugs fetched:', bugs.length, 'items');
 
         for (const bug of bugs) {
           items.push(this.mapBugToPluginItem(bug));
@@ -111,6 +122,7 @@ export class TapdPlugin implements DataSourcePlugin {
       }
     }
 
+    console.log('[TAPD Plugin] Total items returned:', items.length);
     return items;
   }
 
