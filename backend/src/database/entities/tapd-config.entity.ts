@@ -12,9 +12,6 @@ export class TapdConfig {
   apiUrl!: string;
 
   @Column()
-  apiToken!: string;
-
-  @Column()
   workspaceId!: string;
 
   @Column({ default: true })

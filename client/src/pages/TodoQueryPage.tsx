@@ -7,24 +7,24 @@ import './TodoQueryPage.css';
 
 export function TodoQueryPage() {
   const navigate = useNavigate();
-  const { apiBaseUrl, apiToken } = useTapdStore();
+  const { apiBaseUrl } = useTapdStore();
   const [users, setUsers] = useState<TapdUser[]>([]);
   const [todos, setTodos] = useState<TapdTodo[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
 
   useEffect(() => {
-    if (!apiBaseUrl || !apiToken) {
+    if (!apiBaseUrl) {
       navigate('/tapd-config');
     }
-  }, [apiBaseUrl, apiToken, navigate]);
+  }, [apiBaseUrl, navigate]);
 
   useEffect(() => {
     // 加载项目用户列表
-    if (apiBaseUrl && apiToken) {
+    if (apiBaseUrl) {
       getUsers('').then(setUsers).catch(() => setUsers([]));
     }
-  }, [apiBaseUrl, apiToken]);
+  }, [apiBaseUrl]);
 
   const handleSearch = async () => {
     if (!selectedUserId) return;

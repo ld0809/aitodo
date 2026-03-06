@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import axios from 'axios';
 
 export interface TapdRequirement {
@@ -74,7 +74,7 @@ export interface FetchBugsParams {
 @Injectable()
 export class TapdService {
   private client: any = null;
-  private config: { apiUrl: string; apiToken: string; workspaceId: string } | null = null;
+  private config: { apiUrl: string; apiUser: string; workspaceId: string } | null = null;
   private doneStoryStatusesCache = new Map<string, Set<string>>();
 
   private async getDoneStoryStatuses(workspaceId: string): Promise<Set<string>> {
@@ -101,19 +101,31 @@ export class TapdService {
     }
   }
 
-  setConfig(apiUrl: string, apiToken: string, workspaceId?: string) {
-    this.config = { apiUrl, apiToken, workspaceId: workspaceId || "" };
+  private readCredentials() {
+    const apiUser = process.env.TAPD_API_USER?.trim() || 'fxiaoke';
+    const apiToken = process.env.TAPD_API_TOKEN?.trim() || '';
+
+    if (!apiToken) {
+      throw new UnauthorizedException('TAPD_API_TOKEN is missing. Please set TAPD_API_USER/TAPD_API_TOKEN in backend .env and restart backend.');
+    }
+
+    return { apiUser, apiToken };
+  }
+
+  setConfig(apiUrl: string, workspaceId?: string) {
+    const { apiUser, apiToken } = this.readCredentials();
+    this.config = { apiUrl, apiUser, workspaceId: workspaceId || "" };
     this.client = axios.create({
       baseURL: apiUrl,
       headers: {
-        Authorization: "Basic " + Buffer.from("fxiaoke:" + apiToken).toString("base64"),
+        Authorization: "Basic " + Buffer.from(`${apiUser}:${apiToken}`).toString("base64"),
         'Content-Type': 'application/json',
       },
       timeout: 30000,
     });
   }
 
-  getConfig(): { apiUrl: string; apiToken: string } | null {
+  getConfig(): { apiUrl: string; apiUser: string; workspaceId: string } | null {
     return this.config;
   }
 
@@ -270,7 +282,7 @@ export class TapdService {
     } catch (error: any) {
       const status = error?.response?.status;
       if (status === 401) {
-        throw new Error('TAPD authentication failed (401). Please verify API Token in TAPD config.');
+        throw new UnauthorizedException('TAPD authentication failed (401). Please verify TAPD_API_USER/TAPD_API_TOKEN in backend .env.');
       }
       console.error('Failed to fetch requirements:', error);
       return [];
@@ -324,7 +336,7 @@ export class TapdService {
     } catch (error: any) {
       const status = error?.response?.status;
       if (status === 401) {
-        throw new Error('TAPD authentication failed (401). Please verify API Token in TAPD config.');
+        throw new UnauthorizedException('TAPD authentication failed (401). Please verify TAPD_API_USER/TAPD_API_TOKEN in backend .env.');
       }
       console.error('Failed to fetch bugs:', error);
       return [];

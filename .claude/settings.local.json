@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(tmux list-sessions:*)",
+      "Bash(npm run:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)"
     ]
   }
 }

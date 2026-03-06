@@ -7,7 +7,6 @@ import { TapdService } from '../plugins/adapters/tapd.service';
 export interface CreateTapdConfigDto {
   name: string;
   apiUrl: string;
-  apiToken: string;
   workspaceId: string;
   isDefault?: boolean;
 }
@@ -15,7 +14,6 @@ export interface CreateTapdConfigDto {
 export interface UpdateTapdConfigDto {
   name?: string;
   apiUrl?: string;
-  apiToken?: string;
   workspaceId?: string;
   isDefault?: boolean;
 }
@@ -37,7 +35,7 @@ export class TapdConfigService {
     const saved = await this.tapdConfigRepository.save(config);
     
     // Initialize TAPD service with the new config
-    this.tapdService.setConfig(saved.apiUrl, saved.apiToken);
+    this.tapdService.setConfig(saved.apiUrl, saved.workspaceId);
     
     return saved;
   }
@@ -71,9 +69,9 @@ export class TapdConfigService {
     const updated = await this.tapdConfigRepository.save(config);
     
     // Re-initialize TAPD service if config changed
-    if (dto.apiUrl || dto.apiToken) {
+    if (dto.apiUrl || dto.workspaceId) {
       const latest = await this.findOne(id);
-      this.tapdService.setConfig(latest.apiUrl, latest.apiToken);
+      this.tapdService.setConfig(latest.apiUrl, latest.workspaceId);
     }
     
     return updated;

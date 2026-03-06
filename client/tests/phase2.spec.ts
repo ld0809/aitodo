@@ -54,9 +54,8 @@ async function setupAuthAndConfig(page: Page) {
   await page.waitForTimeout(1000);
   
   const inputs = page.locator('input');
-  if (await inputs.count() >= 2) {
+  if (await inputs.count() >= 1) {
     await inputs.nth(0).fill('https://api.tapd.cn');
-    await inputs.nth(1).fill('test-token-123');
     const saveBtn = page.locator('button').filter({ hasText: '保存' }).first();
     if (await saveBtn.count() > 0) {
       await saveBtn.click();
@@ -94,7 +93,6 @@ async function setAuthAndGo(page: Page, path: string) {
     const tapdData = {
       state: {
         apiBaseUrl: 'https://api.tapd.cn',
-        apiToken: 'test-token-123',
         setConfig: () => {},
         isConfigured: () => true,
       },
@@ -123,14 +121,13 @@ test('6.1 TAPD配置页面 - 访问和元素验证', async ({ page }) => {
   const hasHeading = heading === 'TAPD 配置';
   
   const hasApiUrlInput = await page.locator('input[type="text"]').first().count() > 0;
-  const hasApiTokenInput = await page.locator('input[type="password"]').count() > 0;
   const hasSaveButton = await page.locator('button').filter({ hasText: '保存' }).count() > 0;
   
-  log(`[${hasHeading && hasApiUrlInput && hasApiTokenInput && hasSaveButton ? 'PASS' : 'FAIL'}] TAPD配置页面: heading="${heading}", apiUrl=${hasApiUrlInput}, apiToken=${hasApiTokenInput}, saveBtn=${hasSaveButton}`);
+  log(`[${hasHeading && hasApiUrlInput && hasSaveButton ? 'PASS' : 'FAIL'}] TAPD配置页面: heading="${heading}", apiUrl=${hasApiUrlInput}, saveBtn=${hasSaveButton}`);
   if (errors.length > 0) {
     log(`[WARN] Console errors: ${errors.join(', ')}`);
   }
-  expect(hasHeading && hasApiUrlInput && hasApiTokenInput && hasSaveButton).toBeTruthy();
+  expect(hasHeading && hasApiUrlInput && hasSaveButton).toBeTruthy();
 });
 
 // 测试：1. TAPD 配置页面 - 保存配置
@@ -140,13 +137,11 @@ test('6.2 TAPD配置页面 - 保存配置', async ({ page }) => {
   const inputs = page.locator('input');
   const buttons = page.locator('button');
   
-  if (await inputs.count() >= 2 && await buttons.count() > 0) {
+  if (await inputs.count() >= 1 && await buttons.count() > 0) {
     const apiUrlInput = inputs.nth(0);
-    const apiTokenInput = inputs.nth(1);
     const saveButton = buttons.filter({ hasText: '保存' }).first();
     
     await apiUrlInput.fill('https://api.tapd.cn');
-    await apiTokenInput.fill('test-token-123');
     await saveButton.click();
     
     // 立即检查成功提示（因为它只显示2秒）

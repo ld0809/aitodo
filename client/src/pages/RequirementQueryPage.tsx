@@ -7,7 +7,7 @@ import './RequirementQueryPage.css';
 
 export function RequirementQueryPage() {
   const navigate = useNavigate();
-  const { apiBaseUrl, apiToken } = useTapdStore();
+  const { apiBaseUrl } = useTapdStore();
   const [projects, setProjects] = useState<TapdProject[]>([]);
   const [iterations, setIterations] = useState<TapdIteration[]>([]);
   const [requirements, setRequirements] = useState<TapdRequirement[]>([]);
@@ -16,10 +16,10 @@ export function RequirementQueryPage() {
   const [iterationId, setIterationId] = useState('');
 
   useEffect(() => {
-    if (!apiBaseUrl || !apiToken) {
+    if (!apiBaseUrl) {
       navigate('/tapd-config');
     }
-  }, [apiBaseUrl, apiToken, navigate]);
+  }, [apiBaseUrl, navigate]);
 
   useEffect(() => {
     if (projectId) {

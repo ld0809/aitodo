@@ -52,7 +52,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchProjects(wid);
   }
 
@@ -69,7 +69,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchIterations(wid, projectId);
   }
 
@@ -86,7 +86,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchUsers(wid, projectId);
   }
 
@@ -103,7 +103,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchVersions(wid, projectId);
   }
 
@@ -128,7 +128,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     const ownerIdsArray = ownerIds ? ownerIds.split(',') : undefined;
 
     return this.tapdService.fetchRequirements({
@@ -163,7 +163,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     const ownerIdsArray = ownerIds ? ownerIds.split(',') : undefined;
 
     return this.tapdService.fetchBugs({
@@ -191,7 +191,7 @@ export class TapdController {
 
     const wid = workspaceId || config.workspaceId;
     // Set config for tapdService to use
-    this.tapdService.setConfig(config.apiUrl, config.apiToken, wid);
+    this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchTodos(wid, userId);
   }
 }

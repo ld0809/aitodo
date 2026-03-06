@@ -7,7 +7,7 @@ import './BugQueryPage.css';
 
 export function BugQueryPage() {
   const navigate = useNavigate();
-  const { apiBaseUrl, apiToken } = useTapdStore();
+  const { apiBaseUrl } = useTapdStore();
   const [projects, setProjects] = useState<TapdProject[]>([]);
   const [bugs, setBugs] = useState<TapdBug[]>([]);
   const [loading, setLoading] = useState(false);
@@ -16,10 +16,10 @@ export function BugQueryPage() {
   const [title, setTitle] = useState('');
 
   useEffect(() => {
-    if (!apiBaseUrl || !apiToken) {
+    if (!apiBaseUrl) {
       navigate('/tapd-config');
     }
-  }, [apiBaseUrl, apiToken, navigate]);
+  }, [apiBaseUrl, navigate]);
 
   useEffect(() => {
     if (projectId) {

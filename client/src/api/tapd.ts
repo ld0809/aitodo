@@ -58,28 +58,22 @@ export interface TapdTodo {
 
 // 获取项目列表
 export const getProjects = async (): Promise<TapdProject[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
-  const response = await apiClient.get(apiBaseUrl + '/api/projects', {
-    headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined },
-  });
+  const { apiBaseUrl } = useTapdStore.getState();
+  const response = await apiClient.get(apiBaseUrl + '/api/projects');
   return response.data;
 };
 
 // 获取迭代列表
 export const getIterations = async (projectId: string): Promise<TapdIteration[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
-  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/iterations', {
-    headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined },
-  });
+  const { apiBaseUrl } = useTapdStore.getState();
+  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/iterations');
   return response.data;
 };
 
 // 获取用户列表
 export const getUsers = async (projectId: string): Promise<TapdUser[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
-  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/users?workspaceId=' + projectId, {
-    headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined },
-  });
+  const { apiBaseUrl } = useTapdStore.getState();
+  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/users?workspaceId=' + projectId);
   return response.data;
 };
 
@@ -90,17 +84,14 @@ export const getRequirements = async (params: {
   ownerIds?: string[];
   statuses?: string[];
 }): Promise<TapdRequirement[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
+  const { apiBaseUrl } = useTapdStore.getState();
   const queryParams = new URLSearchParams();
   queryParams.append('projectId', params.projectId);
   if (params.iterationId) queryParams.append('iterationId', params.iterationId);
   if (params.ownerIds && params.ownerIds.length) queryParams.append('ownerIds', params.ownerIds.join(','));
   if (params.statuses && params.statuses.length) queryParams.append('status', params.statuses.join(','));
   
-  const response = await apiClient.get(
-    apiBaseUrl + '/api/requirements?' + queryParams.toString(),
-    { headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined } }
-  );
+  const response = await apiClient.get(apiBaseUrl + '/api/requirements?' + queryParams.toString());
   return response.data;
 };
 
@@ -114,7 +105,7 @@ export const getBugs = async (params: {
   ownerIds?: string[];
   statuses?: string[];
 }): Promise<TapdBug[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
+  const { apiBaseUrl } = useTapdStore.getState();
   const queryParams = new URLSearchParams();
   queryParams.append('projectId', params.projectId);
   if (params.iterationId) queryParams.append('iterationId', params.iterationId);
@@ -124,18 +115,13 @@ export const getBugs = async (params: {
   if (params.ownerIds && params.ownerIds.length) queryParams.append('ownerIds', params.ownerIds.join(','));
   if (params.statuses && params.statuses.length) queryParams.append('status', params.statuses.join(','));
   
-  const response = await apiClient.get(
-    apiBaseUrl + '/api/bugs?' + queryParams.toString(),
-    { headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined } }
-  );
+  const response = await apiClient.get(apiBaseUrl + '/api/bugs?' + queryParams.toString());
   return response.data;
 };
 
 // 获取待办列表
 export const getTodos = async (ownerId: string): Promise<TapdTodo[]> => {
-  const { apiBaseUrl, apiToken } = useTapdStore.getState();
-  const response = await apiClient.get(apiBaseUrl + '/api/todos/' + ownerId + '/todos', {
-    headers: { Authorization: apiToken ? 'Bearer ' + apiToken : undefined },
-  });
+  const { apiBaseUrl } = useTapdStore.getState();
+  const response = await apiClient.get(apiBaseUrl + '/api/todos/' + ownerId + '/todos');
   return response.data;
 };

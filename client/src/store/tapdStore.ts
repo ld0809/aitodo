@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware';
 
 interface TapdConfig {
   apiBaseUrl: string;
-  apiToken: string;
 }
 
 interface TapdStore extends TapdConfig {
@@ -15,11 +14,10 @@ export const useTapdStore = create<TapdStore>()(
   persist(
     (set, get) => ({
       apiBaseUrl: '',
-      apiToken: '',
       setConfig: (config: TapdConfig) => set(config),
       isConfigured: () => {
-        const { apiBaseUrl, apiToken } = get();
-        return !!apiBaseUrl && !!apiToken;
+        const { apiBaseUrl } = get();
+        return !!apiBaseUrl;
       },
     }),
     {

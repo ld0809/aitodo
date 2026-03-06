@@ -8,8 +8,6 @@ import { TapdService } from './tapd.service';
 import { TapdConfig as TapdConfigEntity } from '../../database/entities/tapd-config.entity';
 
 export interface TapdPluginConfig {
-  apiUrl: string;
-  apiToken: string;
   workspaceId: string;
 }
 
@@ -75,7 +73,7 @@ export class TapdPlugin implements DataSourcePlugin {
         console.log('[TAPD Plugin] No default config, returning empty');
         return [];
       }
-      this.tapdService.setConfig(defaultConfig.apiUrl, defaultConfig.apiToken, defaultConfig.workspaceId);
+      this.tapdService.setConfig(defaultConfig.apiUrl, defaultConfig.workspaceId);
     }
     const config = ctx.config as TapdPluginConfig;
     const options = ctx.config as TapdFetchOptions;

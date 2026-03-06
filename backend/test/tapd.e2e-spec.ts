@@ -30,7 +30,6 @@ describe('TAPD API (e2e)', () => {
         .send({
           name: 'Test TAPD',
           apiUrl: 'https://api.tapd.cn',
-          apiToken: 'test-token',
           workspaceId: '12345',
           isDefault: true,
         })
@@ -82,7 +81,6 @@ describe('TAPD API (e2e)', () => {
         .send({
           name: 'To Delete',
           apiUrl: 'https://api.tapd.cn',
-          apiToken: 'test-token',
           workspaceId: '99999',
         })
         .expect(201)
