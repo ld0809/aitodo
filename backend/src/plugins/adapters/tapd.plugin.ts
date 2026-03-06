@@ -33,6 +33,48 @@ function sanitizeText(value: string): string {
     .trim();
 }
 
+function mapTapdStatusToDisplayLabel(status: string, statusLabelMap?: Record<string, string>): string {
+  const rawStatus = sanitizeText(status || '');
+  if (!rawStatus) {
+    return '未知状态';
+  }
+
+  const mappedLabel = statusLabelMap?.[rawStatus] || statusLabelMap?.[rawStatus.toLowerCase()];
+  if (mappedLabel) {
+    return sanitizeText(mappedLabel);
+  }
+
+  const normalized = rawStatus.toLowerCase();
+  const displayMap: Record<string, string> = {
+    new: '新建',
+    open: '待处理',
+    todo: '待处理',
+    pending: '待处理',
+    in_progress: '开发中',
+    inprogress: '开发中',
+    ongoing: '开发中',
+    developing: '开发中',
+    processing: '处理中',
+    testing: '测试中',
+    resolved: '已解决',
+    done: '已完成',
+    completed: '已完成',
+    closed: '已关闭',
+    rejected: '已拒绝',
+    abandoned: '已废弃',
+  };
+
+  if (displayMap[normalized]) {
+    return displayMap[normalized];
+  }
+
+  if (/[\u4e00-\u9fff]/.test(rawStatus)) {
+    return rawStatus;
+  }
+
+  return rawStatus.replace(/[_-]+/g, ' ');
+}
+
 function mapTapdStatusToPluginStatus(status: string): 'todo' | 'done' | 'completed' {
   const lowerStatus = status?.toLowerCase() || '';
   if (lowerStatus === 'done' || lowerStatus === 'completed' || lowerStatus === 'closed') {
@@ -88,6 +130,7 @@ export class TapdPlugin implements DataSourcePlugin {
 
       if (contentType === 'all' || contentType === 'requirements') {
         console.log('[TAPD Plugin] Fetching requirements...');
+        const statusLabelMap = await this.tapdService.getStoryStatusLabelMap(config.workspaceId);
         const requirements = await this.tapdService.fetchRequirements({
           workspaceId: config.workspaceId,
           projectId,
@@ -98,7 +141,7 @@ export class TapdPlugin implements DataSourcePlugin {
         console.log('[TAPD Plugin] Requirements fetched:', requirements.length, 'items');
 
         for (const req of requirements) {
-          items.push(this.mapRequirementToPluginItem(req));
+          items.push(this.mapRequirementToPluginItem(req, statusLabelMap));
         }
       }
 
@@ -125,10 +168,12 @@ export class TapdPlugin implements DataSourcePlugin {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapRequirementToPluginItem(req: any): PluginItem {
+  private mapRequirementToPluginItem(req: any, statusLabelMap?: Record<string, string>): PluginItem {
+    const statusLabel = mapTapdStatusToDisplayLabel(req.status, statusLabelMap);
+    const title = sanitizeText(req.name);
     return {
       id: req.id,
-      content: sanitizeText(req.name),
+      content: sanitizeText(`[${statusLabel}] ${title}`),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(req.status),

@@ -76,6 +76,35 @@ export class TapdService {
   private client: any = null;
   private config: { apiUrl: string; apiUser: string; workspaceId: string } | null = null;
   private doneStoryStatusesCache = new Map<string, Set<string>>();
+  private storyStatusOptionsCache = new Map<string, Record<string, string>>();
+
+  private async getStoryStatusOptions(workspaceId: string): Promise<Record<string, string>> {
+    if (this.storyStatusOptionsCache.has(workspaceId)) {
+      return this.storyStatusOptionsCache.get(workspaceId) || {};
+    }
+
+    const response = await this.client.get(`/stories/get_fields_info?workspace_id=${workspaceId}`);
+    const statusOptions = response.data?.data?.status?.options || {};
+    const normalizedOptions: Record<string, string> = {};
+
+    Object.entries(statusOptions).forEach(([code, label]) => {
+      const key = String(code || '').trim();
+      const value = String(label || '').trim();
+      if (!key || !value) return;
+      normalizedOptions[key] = value;
+      normalizedOptions[key.toLowerCase()] = value;
+    });
+
+    this.storyStatusOptionsCache.set(workspaceId, normalizedOptions);
+    return normalizedOptions;
+  }
+
+  async getStoryStatusLabelMap(workspaceId: string): Promise<Record<string, string>> {
+    if (!this.client) {
+      throw new Error('TAPD client not initialized. Please set config first.');
+    }
+    return this.getStoryStatusOptions(workspaceId);
+  }
 
   private async getDoneStoryStatuses(workspaceId: string): Promise<Set<string>> {
     if (this.doneStoryStatusesCache.has(workspaceId)) {
@@ -84,13 +113,13 @@ export class TapdService {
 
     const defaultDone = new Set<string>(['resolved', 'rejected', 'closed', 'done', 'completed', 'abandoned']);
     try {
-      const response = await this.client.get(`/stories/get_fields_info?workspace_id=${workspaceId}`);
-      const statusOptions = response.data?.data?.status?.options || {};
+      const statusOptions = await this.getStoryStatusOptions(workspaceId);
       const doneLabelPattern = /(已完成|已关闭|已拒绝|终止|关闭|完成|拒绝|已实现|已发布|已上线|done|closed|resolved|rejected)/i;
       const doneCodes = new Set<string>(defaultDone);
       Object.entries(statusOptions).forEach(([code, label]) => {
         if (doneLabelPattern.test(String(label))) {
-          doneCodes.add(code);
+          doneCodes.add(String(code).toLowerCase());
+          doneCodes.add(String(label).toLowerCase());
         }
       });
       this.doneStoryStatusesCache.set(workspaceId, doneCodes);
