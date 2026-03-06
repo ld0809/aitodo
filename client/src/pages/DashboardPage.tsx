@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
 import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
-import { getRequirements, getBugs, type TapdRequirement, type TapdBug } from '../api/tapd';
+import { usersApi } from '../api/users';
 import type { Todo, Card } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
@@ -22,10 +22,13 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
 
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalDraft, setGoalDraft] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
@@ -91,6 +94,18 @@ export function DashboardPage() {
     queryKey: ['tags'],
     queryFn: () => tagsApi.getAll().then((res) => res.data),
   });
+
+  const { data: meProfile } = useQuery({
+    queryKey: ['me'],
+    enabled: !!user,
+    queryFn: () => usersApi.getMe().then((res) => res.data),
+  });
+
+  useEffect(() => {
+    if (meProfile) {
+      updateUser(meProfile);
+    }
+  }, [meProfile, updateUser]);
 
   const createTodoMutation = useMutation({
     mutationFn: (data: CreateTodoDto) => todosApi.create(data),
@@ -179,6 +194,15 @@ export function DashboardPage() {
     mutationFn: (id: string) => tagsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
+    },
+  });
+
+  const updateProfileMutation = useMutation({
+    mutationFn: (data: { target: string }) => usersApi.updateMe(data),
+    onSuccess: (res) => {
+      updateUser(res.data);
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      setShowGoalModal(false);
     },
   });
 
@@ -282,6 +306,11 @@ export function DashboardPage() {
     }
   };
 
+  const handleSaveGoal = () => {
+    const nextTarget = goalDraft.trim().slice(0, 100);
+    updateProfileMutation.mutate({ target: nextTarget });
+  };
+
   const handleDragStop = (_layout: readonly any[], _oldItem: any, newItem: any) => {
     const card = cards.find((c: Card) => c.id === newItem.i);
     if (!card) return;
@@ -329,10 +358,15 @@ export function DashboardPage() {
     <div className="dashboard">
       <Header
         user={user}
+        currentTarget={user?.target?.trim() || ''}
         onLogout={handleLogout}
         onNewTodo={() => handleOpenTodoModal()}
         onNewCard={() => handleOpenCardModal()}
         onOpenTags={() => setShowTagModal(true)}
+        onOpenGoalSettings={() => {
+          setGoalDraft(user?.target || '');
+          setShowGoalModal(true);
+        }}
       />
 
       <main className="main">
@@ -436,6 +470,51 @@ export function DashboardPage() {
           onDelete={handleDeleteTag}
           onClose={() => setShowTagModal(false)}
         />
+      )}
+
+      {showGoalModal && (
+        <div className="overlay open" onClick={() => setShowGoalModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">设置当前目标</div>
+              <button className="modal-close" onClick={() => setShowGoalModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <label className="goal-label" htmlFor="goal-input">目标内容（最多 100 字）</label>
+              <textarea
+                id="goal-input"
+                className="goal-input"
+                maxLength={100}
+                rows={4}
+                placeholder="例如：本周完成支付模块联调并上线灰度。"
+                value={goalDraft}
+                onChange={(e) => setGoalDraft(e.target.value)}
+              />
+              <div className="goal-meta">
+                <span>留空后保存可清空目标</span>
+                <span>{goalDraft.length}/100</span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowGoalModal(false)}
+                disabled={updateProfileMutation.isPending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveGoal}
+                disabled={updateProfileMutation.isPending}
+              >
+                {updateProfileMutation.isPending ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

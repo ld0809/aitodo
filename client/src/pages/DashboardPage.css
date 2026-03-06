@@ -192,3 +192,36 @@
 .react-resizable-handle {
   display: none !important;
 }
+
+.goal-label {
+  display: block;
+  font-size: 14px;
+  color: var(--txt2);
+  margin-bottom: 8px;
+}
+
+.goal-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--txt);
+  background: var(--bg2);
+  resize: vertical;
+  min-height: 96px;
+}
+
+.goal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.goal-meta {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--txt3);
+}

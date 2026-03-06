@@ -21,6 +21,9 @@ export class User {
   @Column({ name: 'avatar_url', nullable: true })
   avatarUrl!: string;
 
+  @Column({ nullable: true })
+  target!: string;
+
   @Column({ name: 'email_verified', default: false })
   emailVerified!: boolean;
 

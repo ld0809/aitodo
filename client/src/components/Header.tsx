@@ -4,13 +4,23 @@ import './Header.css';
 
 interface HeaderProps {
   user: User | null;
+  currentTarget: string;
   onLogout: () => void;
   onNewTodo: () => void;
   onNewCard: () => void;
   onOpenTags: () => void;
+  onOpenGoalSettings: () => void;
 }
 
-export function Header({ user, onLogout, onNewTodo, onNewCard, onOpenTags }: HeaderProps) {
+export function Header({
+  user,
+  currentTarget,
+  onLogout,
+  onNewTodo,
+  onNewCard,
+  onOpenTags,
+  onOpenGoalSettings,
+}: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +40,10 @@ export function Header({ user, onLogout, onNewTodo, onNewCard, onOpenTags }: Hea
     return '?';
   };
 
+  const displayTarget = currentTarget
+    ? currentTarget.replace(/\n+/g, ' ').replace(/ /g, '\u00A0')
+    : '未设置（点击头像设置）';
+
   return (
     <header className="header">
       <div className="header-left">
@@ -42,6 +56,11 @@ export function Header({ user, onLogout, onNewTodo, onNewCard, onOpenTags }: Hea
           <div className="nav-item">日历</div>
           <div className="nav-item">统计</div>
         </nav>
+        <div className="current-target" title={currentTarget || '未设置目标'}>
+          <span className={`target-text ${currentTarget ? 'active' : 'empty'}`}>
+            {displayTarget}
+          </span>
+        </div>
       </div>
       <div className="header-right">
         <button className="btn-sm" onClick={onNewTodo}>+ 新建待办</button>
@@ -56,6 +75,14 @@ export function Header({ user, onLogout, onNewTodo, onNewCard, onOpenTags }: Hea
           {showUserMenu && (
             <div className="user-menu">
               <div onClick={() => {}}>👤 个人中心</div>
+              <div
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onOpenGoalSettings();
+                }}
+              >
+                🎯 目标设置
+              </div>
               <div onClick={onOpenTags}>🏷️ 标签管理</div>
               <div className="danger" onClick={onLogout}>
                 🚪 退出登录

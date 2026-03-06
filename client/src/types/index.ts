@@ -3,6 +3,7 @@ export interface User {
   email: string;
   nickname?: string;
   avatarUrl?: string;
+  target?: string;
   emailVerified: boolean;
   status: string;
   createdAt: string;

@@ -22,6 +22,9 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
+      nickname: user.nickname,
+      avatarUrl: user.avatarUrl,
+      target: user.target,
       emailVerified: user.emailVerified,
       status: user.status,
       createdAt: user.createdAt,
@@ -41,6 +44,9 @@ export class UsersService {
     if (dto.avatarUrl !== undefined) {
       user.avatarUrl = dto.avatarUrl;
     }
+    if (dto.target !== undefined) {
+      user.target = dto.target;
+    }
 
     await this.userRepository.save(user);
 
@@ -49,6 +55,7 @@ export class UsersService {
       email: user.email,
       nickname: user.nickname,
       avatarUrl: user.avatarUrl,
+      target: user.target,
       emailVerified: user.emailVerified,
       status: user.status,
       createdAt: user.createdAt,
