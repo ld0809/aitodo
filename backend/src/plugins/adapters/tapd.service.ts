@@ -77,6 +77,67 @@ export class TapdService {
   private config: { apiUrl: string; apiUser: string; workspaceId: string } | null = null;
   private doneStoryStatusesCache = new Map<string, Set<string>>();
   private storyStatusOptionsCache = new Map<string, Record<string, string>>();
+  private workspaceUserAccountMapCache = new Map<string, Map<string, string>>();
+
+  private async getWorkspaceUserAccountMap(workspaceId: string): Promise<Map<string, string>> {
+    if (this.workspaceUserAccountMapCache.has(workspaceId)) {
+      return this.workspaceUserAccountMapCache.get(workspaceId) || new Map<string, string>();
+    }
+
+    const accountMap = new Map<string, string>();
+    try {
+      const response = await this.client.get('/workspaces/users', {
+        params: {
+          workspace_id: workspaceId,
+          fields: 'user,user_id,name,email',
+        },
+      });
+      const payload = response.data?.data ?? response.data ?? [];
+      const rawList = Array.isArray(payload) ? payload : [];
+      const users = rawList.map((item: any) => item?.UserWorkspace || item);
+
+      for (const item of users) {
+        const user = String(item?.user || '').trim();
+        if (!user) continue;
+
+        accountMap.set(user, user);
+        accountMap.set(user.toLowerCase(), user);
+
+        const userId = String(item?.user_id || '').trim();
+        if (userId) {
+          accountMap.set(userId, user);
+        }
+
+        const name = String(item?.name || '').trim();
+        if (name) {
+          accountMap.set(name, user);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load TAPD workspace users for owner mapping, fallback to raw owner values.');
+    }
+
+    this.workspaceUserAccountMapCache.set(workspaceId, accountMap);
+    return accountMap;
+  }
+
+  private async resolveOwnerAccounts(workspaceId: string, ownerIds?: string[]): Promise<string[]> {
+    if (!ownerIds || ownerIds.length === 0) {
+      return [];
+    }
+
+    const normalizedOwners = ownerIds.map((item) => String(item || '').trim()).filter(Boolean);
+    if (normalizedOwners.length === 0) {
+      return [];
+    }
+
+    const accountMap = await this.getWorkspaceUserAccountMap(workspaceId);
+    const resolved = normalizedOwners.map((owner) => {
+      return accountMap.get(owner) || accountMap.get(owner.toLowerCase()) || owner;
+    });
+
+    return Array.from(new Set(resolved));
+  }
 
   private async getStoryStatusOptions(workspaceId: string): Promise<Record<string, string>> {
     if (this.storyStatusOptionsCache.has(workspaceId)) {
@@ -273,7 +334,11 @@ export class TapdService {
         queryParams['iteration_id'] = params.iterationId;
       }
       if (params.ownerIds && params.ownerIds.length > 0) {
-        queryParams['owner_id'] = params.ownerIds.join(',');
+        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, params.ownerIds);
+        if (ownerAccounts.length > 0) {
+          // TAPD stories owner filter expects `owner`, not `owner_id`.
+          queryParams['owner'] = ownerAccounts.join(',');
+        }
       }
       if (params.status) {
         queryParams['status'] = params.status;
@@ -339,7 +404,11 @@ export class TapdService {
         queryParams['version_id'] = params.versionId;
       }
       if (params.ownerIds && params.ownerIds.length > 0) {
-        queryParams['owner_id'] = params.ownerIds.join(',');
+        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, params.ownerIds);
+        if (ownerAccounts.length > 0) {
+          // TAPD bugs owner filter expects `current_owner`.
+          queryParams['current_owner'] = ownerAccounts.join(',');
+        }
       }
       if (params.status) {
         queryParams['status'] = params.status;
@@ -378,9 +447,10 @@ export class TapdService {
     }
 
     try {
+      const [ownerAccount] = await this.resolveOwnerAccounts(workspaceId, [userId]);
       const response = await this.client.get(`/stories?workspace_id=${workspaceId}`, {
         params: {
-          owner_id: userId,
+          owner: ownerAccount || userId,
           status: 'open,in_progress',
         },
       });
