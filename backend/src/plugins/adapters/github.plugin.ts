@@ -33,7 +33,8 @@ export class GitHubPlugin implements DataSourcePlugin {
     }
   }
 
-  async fetchItems(_ctx: PluginFetchContext): Promise<PluginItem[]> {
+  async fetchItems(ctx: PluginFetchContext): Promise<PluginItem[]> {
+    void ctx;
     // Placeholder: Implement GitHub API integration here
     // This would fetch issues/PRs from GitHub based on the configuration
     return [];

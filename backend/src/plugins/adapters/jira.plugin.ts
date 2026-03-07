@@ -31,7 +31,8 @@ export class JiraPlugin implements DataSourcePlugin {
     }
   }
 
-  async fetchItems(_ctx: PluginFetchContext): Promise<PluginItem[]> {
+  async fetchItems(ctx: PluginFetchContext): Promise<PluginItem[]> {
+    void ctx;
     // Placeholder: Implement JIRA API integration here
     // This would fetch issues from JIRA based on the configuration
     return [];

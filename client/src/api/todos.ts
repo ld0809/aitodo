@@ -1,4 +1,4 @@
-import type { Todo } from '../types';
+import type { Todo, TodoProgressEntry } from '../types';
 import apiClient from './client';
 
 export interface CreateTodoDto {
@@ -16,6 +16,10 @@ export interface UpdateTodoDto {
   tagIds?: string[];
 }
 
+export interface CreateTodoProgressDto {
+  content: string;
+}
+
 export const todosApi = {
   getAll: () => apiClient.get<Todo[]>('/todos'),
 
@@ -30,4 +34,9 @@ export const todosApi = {
 
   toggleStatus: (id: string, completed: boolean = true) =>
     apiClient.patch<Todo>(`/todos/${id}/complete`, { completed }),
+
+  getProgress: (id: string) => apiClient.get<TodoProgressEntry[]>(`/todos/${id}/progress`),
+
+  createProgress: (id: string, data: CreateTodoProgressDto) =>
+    apiClient.post<TodoProgressEntry & { progressCount: number }>(`/todos/${id}/progress`, data),
 };

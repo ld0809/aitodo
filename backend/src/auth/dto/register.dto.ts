@@ -2,7 +2,7 @@ import { IsEmail, IsString, MinLength, Validate, ValidatorConstraint, ValidatorC
 
 @ValidatorConstraint({ name: 'passwordStrength', async: false })
 class PasswordStrengthConstraint implements ValidatorConstraintInterface {
-  validate(value: string, args: ValidationArguments) {
+  validate(value: string) {
     const hasLetter = /[A-Za-z]/.test(value);
     const hasNumber = /\d/.test(value);
     return hasLetter && hasNumber;

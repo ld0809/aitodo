@@ -5,10 +5,12 @@ import {
   JoinTable,
   ManyToMany,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Tag } from './tag.entity';
+import { TodoProgressEntry } from './todo-progress.entity';
 import { User } from './user.entity';
 
 @Entity('todos')
@@ -40,6 +42,9 @@ export class Todo {
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt!: Date | null;
 
+  @Column({ name: 'progress_count', type: 'integer', default: 0 })
+  progressCount!: number;
+
   @ManyToMany(() => Tag, (tag) => tag.todos)
   @JoinTable({
     name: 'todo_tags',
@@ -47,6 +52,9 @@ export class Todo {
     inverseJoinColumn: { name: 'tag_id', referencedColumnName: 'id' },
   })
   tags!: Tag[];
+
+  @OneToMany(() => TodoProgressEntry, (entry) => entry.todo)
+  progressEntries!: TodoProgressEntry[];
 
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;

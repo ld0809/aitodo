@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, IsNull, LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Tag } from '../database/entities/tag.entity';
+import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
+import { CreateTodoProgressDto } from './dto/create-todo-progress.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { QueryTodosDto } from './dto/query-todos.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -14,6 +16,8 @@ export class TodosService {
     private readonly todoRepository: Repository<Todo>,
     @InjectRepository(Tag)
     private readonly tagRepository: Repository<Tag>,
+    @InjectRepository(TodoProgressEntry)
+    private readonly todoProgressRepository: Repository<TodoProgressEntry>,
   ) {}
 
   async create(userId: string, dto: CreateTodoDto) {
@@ -207,6 +211,42 @@ export class TodosService {
     await this.todoRepository.save(todo);
 
     return { id };
+  }
+
+  async findProgress(userId: string, id: string) {
+    const todo = await this.findOne(userId, id);
+    return this.todoProgressRepository.find({
+      where: {
+        userId,
+        todoId: todo.id,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
+  async createProgress(userId: string, id: string, dto: CreateTodoProgressDto) {
+    const todo = await this.findOne(userId, id);
+    const normalizedContent = dto.content.trim();
+    if (!normalizedContent) {
+      throw new BadRequestException('progress content is required');
+    }
+
+    const entry = this.todoProgressRepository.create({
+      userId,
+      todoId: todo.id,
+      content: normalizedContent,
+    });
+    const savedEntry = await this.todoProgressRepository.save(entry);
+
+    todo.progressCount += 1;
+    await this.todoRepository.save(todo);
+
+    return {
+      ...savedEntry,
+      progressCount: todo.progressCount,
+    };
   }
 
   private async getValidatedTags(userId: string, tagIds?: string[]) {

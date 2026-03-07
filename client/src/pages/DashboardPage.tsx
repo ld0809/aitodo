@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
 import { useAuthStore } from '../store/authStore';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
 import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
+import { reportsApi, type AiReportResult } from '../api/reports';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
 import { usersApi } from '../api/users';
-import type { Todo, Card } from '../types';
+import type { Todo, Card, TodoProgressEntry } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
@@ -16,6 +17,54 @@ import { TagModal } from '../components/TagModal';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './DashboardPage.css';
+
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDefaultLastWeekRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const dayOfWeek = now.getDay();
+  const daysSinceMonday = (dayOfWeek + 6) % 7;
+
+  const currentWeekMonday = new Date(now);
+  currentWeekMonday.setDate(currentWeekMonday.getDate() - daysSinceMonday);
+
+  const lastWeekMonday = new Date(currentWeekMonday);
+  lastWeekMonday.setDate(lastWeekMonday.getDate() - 7);
+
+  const lastWeekSunday = new Date(currentWeekMonday);
+  lastWeekSunday.setDate(lastWeekSunday.getDate() - 1);
+
+  return {
+    startDate: formatDateInput(lastWeekMonday),
+    endDate: formatDateInput(lastWeekSunday),
+  };
+}
+
+function toRangeBoundaryIso(dateText: string, boundary: 'start' | 'end'): string {
+  const date = new Date(`${dateText}T00:00:00`);
+  if (boundary === 'end') {
+    date.setHours(23, 59, 59, 999);
+  } else {
+    date.setHours(0, 0, 0, 0);
+  }
+  return date.toISOString();
+}
+
+interface GridLayoutItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const GridLayoutComponent = GridLayout as unknown as ComponentType<Record<string, unknown>>;
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -28,9 +77,17 @@ export function DashboardPage() {
   const [showCardModal, setShowCardModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [showAiReportModal, setShowAiReportModal] = useState(false);
   const [goalDraft, setGoalDraft] = useState('');
+  const [progressDraft, setProgressDraft] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [activeProgressTodo, setActiveProgressTodo] = useState<Todo | null>(null);
+  const defaultLastWeekRange = getDefaultLastWeekRange();
+  const [reportStartDate, setReportStartDate] = useState(defaultLastWeekRange.startDate);
+  const [reportEndDate, setReportEndDate] = useState(defaultLastWeekRange.endDate);
+  const [aiReportResult, setAiReportResult] = useState<AiReportResult | null>(null);
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const CARD_H = 3;
@@ -101,6 +158,12 @@ export function DashboardPage() {
     queryFn: () => usersApi.getMe().then((res) => res.data),
   });
 
+  const { data: todoProgressEntries = [] } = useQuery({
+    queryKey: ['todo-progress', activeProgressTodo?.id],
+    enabled: !!activeProgressTodo?.id && showProgressModal,
+    queryFn: () => todosApi.getProgress(activeProgressTodo!.id).then((res) => res.data as TodoProgressEntry[]),
+  });
+
   useEffect(() => {
     if (meProfile) {
       updateUser(meProfile);
@@ -136,6 +199,29 @@ export function DashboardPage() {
     mutationFn: ({ id, completed }: { id: string; completed: boolean }) => todosApi.toggleStatus(id, completed),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+    },
+  });
+
+  const createProgressMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      todosApi.createProgress(id, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress', activeProgressTodo?.id] });
+      setProgressDraft('');
+      setShowProgressModal(false);
+      setActiveProgressTodo(null);
+    },
+  });
+
+  const generateAiReportMutation = useMutation({
+    mutationFn: ({ startDate, endDate }: { startDate: string; endDate: string }) =>
+      reportsApi.generateAiReport({
+        startAt: toRangeBoundaryIso(startDate, 'start'),
+        endAt: toRangeBoundaryIso(endDate, 'end'),
+      }),
+    onSuccess: (res) => {
+      setAiReportResult(res.data);
     },
   });
 
@@ -213,7 +299,7 @@ export function DashboardPage() {
 
   const handleOpenTodoModal = (todo?: Todo, card?: Card) => {
     if (card) {
-      const ids = (Array.isArray(card.tags) ? card.tags : []).map((t: any) => t.id);
+      const ids = (Array.isArray(card.tags) ? card.tags : []).map((t) => t.id);
       setDefaultTagIds(ids);
     } else {
       setDefaultTagIds([]);
@@ -290,6 +376,46 @@ export function DashboardPage() {
     toggleTodoMutation.mutate({ id, completed });
   };
 
+  const handleOpenProgressModal = (todo: Todo) => {
+    setActiveProgressTodo(todo);
+    setProgressDraft('');
+    setShowProgressModal(true);
+  };
+
+  const handleSaveProgress = () => {
+    if (!activeProgressTodo) return;
+    const content = progressDraft.trim();
+    if (!content) {
+      alert('请输入进度内容');
+      return;
+    }
+    createProgressMutation.mutate({ id: activeProgressTodo.id, content });
+  };
+
+  const handleOpenAiReportModal = () => {
+    const lastWeekRange = getDefaultLastWeekRange();
+    setReportStartDate(lastWeekRange.startDate);
+    setReportEndDate(lastWeekRange.endDate);
+    setAiReportResult(null);
+    setShowAiReportModal(true);
+  };
+
+  const handleGenerateAiReport = () => {
+    if (!reportStartDate || !reportEndDate) {
+      alert('请选择完整的时间段');
+      return;
+    }
+    if (reportStartDate > reportEndDate) {
+      alert('开始日期不能晚于结束日期');
+      return;
+    }
+    setAiReportResult(null);
+    generateAiReportMutation.mutate({
+      startDate: reportStartDate,
+      endDate: reportEndDate,
+    });
+  };
+
   const handleDeleteCard = (id: string) => {
     setPendingDeleteCardId(id);
   };
@@ -311,7 +437,12 @@ export function DashboardPage() {
     updateProfileMutation.mutate({ target: nextTarget });
   };
 
-  const handleDragStop = (_layout: readonly any[], _oldItem: any, newItem: any) => {
+  const handleDragStop = (
+    _layout: readonly GridLayoutItem[],
+    _oldItem: GridLayoutItem | null,
+    newItem: GridLayoutItem | null,
+  ) => {
+    if (!newItem) return;
     const card = cards.find((c: Card) => c.id === newItem.i);
     if (!card) return;
     if (card.x === newItem.x && card.y === newItem.y) return;
@@ -362,6 +493,7 @@ export function DashboardPage() {
         onLogout={handleLogout}
         onNewTodo={() => handleOpenTodoModal()}
         onNewCard={() => handleOpenCardModal()}
+        onOpenAiReport={handleOpenAiReportModal}
         onOpenTags={() => setShowTagModal(true)}
         onOpenGoalSettings={() => {
           setGoalDraft(user?.target || '');
@@ -370,11 +502,8 @@ export function DashboardPage() {
       />
 
       <main className="main">
-        <GridLayout
+        <GridLayoutComponent
           key={`grid-${adaptiveRowHeight}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join("|")}`}
-          verticalCompact={false}
-          compactType={null}
-          isBounded
           autoSize
           className="layout"
           layout={gridLayout}
@@ -410,13 +539,15 @@ export function DashboardPage() {
                       onToggle={() => handleToggleTodo(todo.id, todo.status)}
                       onEdit={() => handleOpenTodoModal(todo)}
                       onDelete={() => handleDeleteTodo(todo.id)}
+                      canUpdateProgress={card.pluginType !== 'tapd'}
+                      onOpenProgress={() => handleOpenProgressModal(todo)}
                     />
                   ))}
               </div>
             </div>
             </div>
           ))}
-        </GridLayout>
+        </GridLayoutComponent>
       </main>
 
       {showTodoModal && (
@@ -444,6 +575,126 @@ export function DashboardPage() {
             setEditingCard(null);
           }}
         />
+      )}
+
+      {showProgressModal && activeProgressTodo && (
+        <div className="overlay open" onClick={() => { setShowProgressModal(false); setActiveProgressTodo(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">更新进度</div>
+              <button className="modal-close" onClick={() => { setShowProgressModal(false); setActiveProgressTodo(null); }}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="progress-todo-title">{activeProgressTodo.content}</div>
+              <textarea
+                className="goal-input"
+                rows={4}
+                maxLength={2000}
+                placeholder="输入当前进度，例如：已完成接口联调，待补充异常处理。"
+                value={progressDraft}
+                onChange={(e) => setProgressDraft(e.target.value)}
+              />
+              <div className="goal-meta">
+                <span>本地待办可更新进度，第三方待办不支持。</span>
+                <span>{progressDraft.length}/2000</span>
+              </div>
+
+              <div className="progress-history">
+                <div className="progress-history-title">最近进度记录</div>
+                {(Array.isArray(todoProgressEntries) ? todoProgressEntries : []).length === 0 ? (
+                  <div className="progress-history-empty">暂无记录</div>
+                ) : (
+                  (Array.isArray(todoProgressEntries) ? todoProgressEntries : []).map((entry) => (
+                    <div key={entry.id} className="progress-history-item">
+                      <div className="progress-history-time">{new Date(entry.createdAt).toLocaleString('zh-CN')}</div>
+                      <div className="progress-history-content">{entry.content}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  setShowProgressModal(false);
+                  setActiveProgressTodo(null);
+                }}
+                disabled={createProgressMutation.isPending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveProgress}
+                disabled={createProgressMutation.isPending}
+              >
+                {createProgressMutation.isPending ? '保存中...' : '保存进度'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAiReportModal && (
+        <div className="overlay open" onClick={() => setShowAiReportModal(false)}>
+          <div className="modal ai-report-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">AI报告</div>
+              <button className="modal-close" onClick={() => setShowAiReportModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="report-period-row">
+                <div className="report-period-field">
+                  <label htmlFor="report-start-date">开始日期</label>
+                  <input
+                    id="report-start-date"
+                    className="goal-input report-date-input"
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="report-period-field">
+                  <label htmlFor="report-end-date">结束日期</label>
+                  <input
+                    id="report-end-date"
+                    className="goal-input report-date-input"
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="report-hint">默认时间段为上周（周一到周日）。</div>
+              {aiReportResult && (
+                <div className="report-result">
+                  <div className="report-meta">
+                    <span>来源：iFlow</span>
+                    <span>待办数：{aiReportResult.todoCount}</span>
+                    <span>进度条数：{aiReportResult.progressCount}</span>
+                  </div>
+                  <pre>{aiReportResult.report}</pre>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setShowAiReportModal(false)}>
+                关闭
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleGenerateAiReport}
+                disabled={generateAiReportMutation.isPending}
+              >
+                {generateAiReportMutation.isPending ? '生成中...' : '生成报告'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
 

@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, Up
 import { Card } from './card.entity';
 import { EmailCode } from './email-code.entity';
 import { Tag } from './tag.entity';
+import { TodoProgressEntry } from './todo-progress.entity';
 import { Todo } from './todo.entity';
 
 @Entity('users')
@@ -44,6 +45,9 @@ export class User {
 
   @OneToMany(() => Todo, (todo) => todo.user)
   todos!: Todo[];
+
+  @OneToMany(() => TodoProgressEntry, (entry) => entry.user)
+  todoProgressEntries!: TodoProgressEntry[];
 
   @OneToMany(() => Card, (card) => card.user)
   cards!: Card[];

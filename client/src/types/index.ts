@@ -27,9 +27,19 @@ export interface Todo {
   executeAt?: string;
   status: 'todo' | 'done' | 'completed';
   completedAt?: string;
+  progressCount?: number;
+  url?: string;
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TodoProgressEntry {
+  id: string;
+  todoId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
 }
 
 export interface Card {

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CreateTodoProgressDto } from './dto/create-todo-progress.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { QueryTodosDto } from './dto/query-todos.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -44,6 +45,20 @@ export class TodosController {
   @Patch(':id/complete')
   complete(@CurrentUser() user: { userId: string }, @Param('id') id: string, @Body() body: { completed: boolean }) {
     return this.todosService.complete(user.userId, id, body.completed);
+  }
+
+  @Get(':id/progress')
+  findProgress(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.todosService.findProgress(user.userId, id);
+  }
+
+  @Post(':id/progress')
+  createProgress(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: CreateTodoProgressDto,
+  ) {
+    return this.todosService.createProgress(user.userId, id, dto);
   }
 
   @Delete(':id')

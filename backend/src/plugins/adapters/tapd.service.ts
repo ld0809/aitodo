@@ -113,7 +113,7 @@ export class TapdService {
           accountMap.set(name, user);
         }
       }
-    } catch (error) {
+    } catch {
       console.warn('Failed to load TAPD workspace users for owner mapping, fallback to raw owner values.');
     }
 
@@ -185,7 +185,7 @@ export class TapdService {
       });
       this.doneStoryStatusesCache.set(workspaceId, doneCodes);
       return doneCodes;
-    } catch (error) {
+    } catch {
       console.warn('Failed to load TAPD story status options, fallback to default done statuses.');
       return defaultDone;
     }
@@ -243,6 +243,7 @@ export class TapdService {
   }
 
   async fetchIterations(workspaceId: string, projectId: string): Promise<TapdIteration[]> {
+    void projectId;
     if (!this.client) {
       throw new Error('TAPD client not initialized. Please set config first.');
     }
@@ -268,6 +269,7 @@ export class TapdService {
   }
 
   async fetchUsers(workspaceId: string, projectId: string): Promise<TapdUser[]> {
+    void projectId;
     if (!this.client) {
       throw new Error('TAPD client not initialized. Please set config first.');
     }

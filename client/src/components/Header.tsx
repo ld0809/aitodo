@@ -8,6 +8,7 @@ interface HeaderProps {
   onLogout: () => void;
   onNewTodo: () => void;
   onNewCard: () => void;
+  onOpenAiReport: () => void;
   onOpenTags: () => void;
   onOpenGoalSettings: () => void;
 }
@@ -18,6 +19,7 @@ export function Header({
   onLogout,
   onNewTodo,
   onNewCard,
+  onOpenAiReport,
   onOpenTags,
   onOpenGoalSettings,
 }: HeaderProps) {
@@ -65,6 +67,7 @@ export function Header({
       <div className="header-right">
         <button className="btn-sm" onClick={onNewTodo}>+ 新建待办</button>
         <button className="btn-sm" onClick={onNewCard}>+ 新建卡片</button>
+        <button className="btn-sm btn-sm-secondary" onClick={onOpenAiReport}>AI报告</button>
         <div className="user-dropdown" ref={menuRef}>
           <div
             className="avatar"

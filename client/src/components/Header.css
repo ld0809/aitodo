@@ -115,6 +115,16 @@
   background: #2563eb;
 }
 
+.btn-sm.btn-sm-secondary {
+  background: var(--bg2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.btn-sm.btn-sm-secondary:hover {
+  background: var(--accent2);
+}
+
 .avatar {
   width: 36px;
   height: 36px;
@@ -173,5 +183,9 @@
 @media (max-width: 800px) {
   .current-target {
     display: none;
+  }
+
+  .btn-sm.btn-sm-secondary {
+    padding: 8px 12px;
   }
 }

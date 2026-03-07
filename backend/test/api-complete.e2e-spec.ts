@@ -6,7 +6,6 @@ import { AppModule } from '../src/app.module';
 describe('Todo Manager API - Complete Test Suite', () => {
   let app: INestApplication;
   let token = '';
-  let userId = '';
   let tagId = '';
   let todoId = '';
   let cardId = '';
@@ -104,7 +103,6 @@ describe('Todo Manager API - Complete Test Suite', () => {
       expect(res.body.code).toBe(0);
       expect(res.body.data.access_token).toBeDefined();
       token = res.body.data.access_token;
-      userId = res.body.data.user.id;
     });
 
     // 1.7 登录 - 密码错误
@@ -252,7 +250,7 @@ describe('Todo Manager API - Complete Test Suite', () => {
       const verifyRes = await request(app.getHttpServer())
         .get(`${baseUrl}/tags`)
         .set('Authorization', `Bearer ${token}`);
-      expect(verifyRes.body.data.find((t: any) => t.id === deleteTagId)).toBeUndefined();
+      expect(verifyRes.body.data.find((t: { id: string }) => t.id === deleteTagId)).toBeUndefined();
     });
   });
 

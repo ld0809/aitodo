@@ -7,9 +7,11 @@ interface TodoCardProps {
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  canUpdateProgress?: boolean;
+  onOpenProgress?: () => void;
 }
 
-export function TodoCard({ todo, onToggle, onEdit }: TodoCardProps) {
+export function TodoCard({ todo, onToggle, onEdit, canUpdateProgress = false, onOpenProgress }: TodoCardProps) {
   const isDone = todo.status === 'done' || todo.status === 'completed';
 
   const formatDate = (dateStr?: string) => {
@@ -33,21 +35,36 @@ export function TodoCard({ todo, onToggle, onEdit }: TodoCardProps) {
 
   return (
     <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
-              if ((todo as any).url) {
-                window.open((todo as any).url, '_blank');
-              } else {
-                onEdit();
-              }
-            }}>
+      if (todo.url) {
+        window.open(todo.url, '_blank');
+      } else {
+        onEdit();
+      }
+    }}>
       <div className="todo-row">
-        <div
-          className={`checkbox ${isDone ? 'checked' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-        >
-          {isDone && '✓'}
+        <div className="todo-left">
+          <div
+            className={`checkbox ${isDone ? 'checked' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+          >
+            {isDone && '✓'}
+          </div>
+          {canUpdateProgress && (
+            <button
+              type="button"
+              className="progress-entry-btn"
+              title="更新进度"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenProgress?.();
+              }}
+            >
+              {todo.progressCount ?? 0}
+            </button>
+          )}
         </div>
         <div className="todo-content">
           <div className={`todo-text ${isDone ? 'done' : ''}`}>

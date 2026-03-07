@@ -14,7 +14,8 @@ export class LocalTodoPlugin implements DataSourcePlugin {
     private readonly todoRepository: Repository<Todo>,
   ) {}
 
-  async validateConfig(_config: unknown) {
+  async validateConfig(config: unknown) {
+    void config;
     return Promise.resolve();
   }
 
