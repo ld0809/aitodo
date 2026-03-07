@@ -1,17 +1,30 @@
-import type { AuthResponse } from '../types';
+import type { AuthResponse, User } from '../types';
 import apiClient from './client';
 
-// NestJS wraps responses in { code, message, data }
+export interface RegisterResponse extends User {
+  debugVerificationCode?: string;
+}
+
+export interface SendEmailCodeResponse {
+  email: string;
+  expiresAt: string;
+  debugCode?: string;
+}
+
+export interface VerifyEmailResponse {
+  verified: boolean;
+}
+
 export const authApi = {
   register: (email: string, password: string) =>
-    apiClient.post<{ code: number; message: string; data: AuthResponse }>('/auth/register', { email, password }),
+    apiClient.post<RegisterResponse>('/auth/register', { email, password }),
 
   login: (email: string, password: string) =>
-    apiClient.post<{ code: number; message: string; data: AuthResponse }>('/auth/login', { email, password }),
+    apiClient.post<AuthResponse>('/auth/login', { email, password }),
 
   sendEmailCode: (email: string) =>
-    apiClient.post('/auth/send-email-code', { email }),
+    apiClient.post<SendEmailCodeResponse>('/auth/send-email-code', { email }),
 
   verifyEmail: (email: string, code: string) =>
-    apiClient.post('/auth/verify-email', { email, code }),
+    apiClient.post<VerifyEmailResponse>('/auth/verify-email', { email, code }),
 };

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
+import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
 import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
@@ -76,13 +77,16 @@ export function DashboardPage() {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showAiReportModal, setShowAiReportModal] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState('');
   const [goalDraft, setGoalDraft] = useState('');
   const [progressDraft, setProgressDraft] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [activeTodoCard, setActiveTodoCard] = useState<Card | null>(null);
   const [activeProgressTodo, setActiveProgressTodo] = useState<Todo | null>(null);
   const defaultLastWeekRange = getDefaultLastWeekRange();
   const [reportStartDate, setReportStartDate] = useState(defaultLastWeekRange.startDate);
@@ -93,6 +97,16 @@ export function DashboardPage() {
   const CARD_H = 3;
   const GRID_MARGIN_Y = 16;
   const [viewportHeight, setViewportHeight] = useState<number>(window.innerHeight);
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (axios.isAxiosError(error)) {
+      const message = (error.response?.data as { message?: string } | undefined)?.message;
+      if (message) {
+        return message;
+      }
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     const onResize = () => setViewportHeight(window.innerHeight);
@@ -121,19 +135,19 @@ export function DashboardPage() {
   });
 
 
-  const tapdCardsKey = (Array.isArray(cards) ? cards : [])
-    .filter((card: Card) => card.pluginType === 'tapd')
+  const remoteCardsKey = (Array.isArray(cards) ? cards : [])
+    .filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared')
     .map((card: Card) => `${card.id}:${card.updatedAt}`)
     .sort()
     .join('|');
 
-  const { data: tapdCardTodos = {} } = useQuery({
-    queryKey: ['tapd-card-todos', tapdCardsKey],
-    enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd'),
+  const { data: remoteCardTodos = {} } = useQuery({
+    queryKey: ['card-todos', remoteCardsKey],
+    enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared'),
     queryFn: async () => {
-      const tapdCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd');
+      const targetCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared');
       const settled = await Promise.allSettled(
-        tapdCards.map(async (card: Card) => {
+        targetCards.map(async (card: Card) => {
           const res = await cardsApi.getTodos(card.id);
           return [card.id, Array.isArray(res.data) ? res.data : []] as const;
         }),
@@ -174,7 +188,9 @@ export function DashboardPage() {
     mutationFn: (data: CreateTodoDto) => todosApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
       setShowTodoModal(false);
+      setActiveTodoCard(null);
     },
   });
 
@@ -183,8 +199,10 @@ export function DashboardPage() {
       todosApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
       setShowTodoModal(false);
       setEditingTodo(null);
+      setActiveTodoCard(null);
     },
   });
 
@@ -192,6 +210,7 @@ export function DashboardPage() {
     mutationFn: (id: string) => todosApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
     },
   });
 
@@ -199,6 +218,7 @@ export function DashboardPage() {
     mutationFn: ({ id, completed }: { id: string; completed: boolean }) => todosApi.toggleStatus(id, completed),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
     },
   });
 
@@ -207,6 +227,7 @@ export function DashboardPage() {
       todosApi.createProgress(id, { content }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
       queryClient.invalidateQueries({ queryKey: ['todo-progress', activeProgressTodo?.id] });
       setProgressDraft('');
       setShowProgressModal(false);
@@ -229,8 +250,11 @@ export function DashboardPage() {
     mutationFn: (data: CreateCardDto) => cardsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
-      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
       setShowCardModal(false);
+    },
+    onError: (error: unknown) => {
+      alert(getErrorMessage(error, '创建卡片失败'));
     },
   });
 
@@ -239,16 +263,19 @@ export function DashboardPage() {
       cardsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
-      queryClient.invalidateQueries({ queryKey: ['tapd-card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
       setShowCardModal(false);
       setEditingCard(null);
+    },
+    onError: (error: unknown) => {
+      alert(getErrorMessage(error, '更新卡片失败'));
     },
   });
 
   const deleteCardMutation = useMutation({
     mutationFn: (id: string) => cardsApi.delete(id),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ['tapd-card-todos'] });
+      queryClient.removeQueries({ queryKey: ['card-todos'] });
       queryClient.invalidateQueries({ queryKey: ['cards'] });
     },
   });
@@ -284,10 +311,11 @@ export function DashboardPage() {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { target: string }) => usersApi.updateMe(data),
+    mutationFn: (data: { target?: string; nickname?: string }) => usersApi.updateMe(data),
     onSuccess: (res) => {
       updateUser(res.data);
       queryClient.invalidateQueries({ queryKey: ['me'] });
+      setShowProfileModal(false);
       setShowGoalModal(false);
     },
   });
@@ -301,8 +329,10 @@ export function DashboardPage() {
     if (card) {
       const ids = (Array.isArray(card.tags) ? card.tags : []).map((t) => t.id);
       setDefaultTagIds(ids);
+      setActiveTodoCard(card);
     } else {
       setDefaultTagIds([]);
+      setActiveTodoCard(null);
     }
     setEditingTodo(todo || null);
     setShowTodoModal(true);
@@ -317,7 +347,11 @@ export function DashboardPage() {
     if (editingTodo) {
       updateTodoMutation.mutate({ id: editingTodo.id, data: data as UpdateTodoDto });
     } else {
-      createTodoMutation.mutate(data as CreateTodoDto);
+      const createPayload: CreateTodoDto = {
+        ...(data as CreateTodoDto),
+        cardId: activeTodoCard?.id,
+      };
+      createTodoMutation.mutate(createPayload);
     }
   };
 
@@ -437,6 +471,11 @@ export function DashboardPage() {
     updateProfileMutation.mutate({ target: nextTarget });
   };
 
+  const handleSaveProfile = () => {
+    const nextNickname = nicknameDraft.trim().slice(0, 100);
+    updateProfileMutation.mutate({ nickname: nextNickname });
+  };
+
   const handleDragStop = (
     _layout: readonly GridLayoutItem[],
     _oldItem: GridLayoutItem | null,
@@ -460,8 +499,8 @@ export function DashboardPage() {
   };
 
   const getTodosForCard = (card: Card) => {
-    if (card.pluginType === 'tapd') {
-      return tapdCardTodos[card.id] || [];
+    if (card.pluginType === 'tapd' || card.cardType === 'shared') {
+      return remoteCardTodos[card.id] || [];
     }
     if (!card.tags?.length) return todos;
     const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((t) => t.id);
@@ -495,6 +534,10 @@ export function DashboardPage() {
         onNewCard={() => handleOpenCardModal()}
         onOpenAiReport={handleOpenAiReportModal}
         onOpenTags={() => setShowTagModal(true)}
+        onOpenProfileSettings={() => {
+          setNicknameDraft(user?.nickname?.trim() || '');
+          setShowProfileModal(true);
+        }}
         onOpenGoalSettings={() => {
           setGoalDraft(user?.target || '');
           setShowGoalModal(true);
@@ -518,26 +561,40 @@ export function DashboardPage() {
         >
           {(Array.isArray(cards) ? cards : []).map((card: Card) => (
             <div key={card.id} className="grid-card-inner">
+              {(() => {
+                const cardTodos = getTodosForCard(card);
+                const isCardOwner = card.userId === user?.id;
+                return (
               <div className="card">
                 <div className="card-header">
                   <div className="card-title">
-                    {card.name}
-                    <span className="count">{getTodosForCard(card).length}</span>
+                    {card.name}{card.cardType === 'shared' ? ' · 共享' : ''}
+                    <span className="count">{cardTodos.length}</span>
                   </div>
                   <div className="card-actions">
-                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
-                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenCardModal(card); }}>✎</button>
-                    <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCard(card.id); }}>🗑</button>
+                    {isCardOwner && (
+                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
+                    )}
+                    {isCardOwner && (
+                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenCardModal(card); }}>✎</button>
+                    )}
+                    {isCardOwner && (
+                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCard(card.id); }}>🗑</button>
+                    )}
                   </div>
                 </div>
                 <div className="card-body">
-                  {(Array.isArray(getTodosForCard(card)) ? getTodosForCard(card) : []).map((todo: Todo) => (
+                  {(Array.isArray(cardTodos) ? cardTodos : []).map((todo: Todo) => (
                     <TodoCard
                       key={todo.id}
                       todo={todo}
                       tags={tags}
                       onToggle={() => handleToggleTodo(todo.id, todo.status)}
-                      onEdit={() => handleOpenTodoModal(todo)}
+                      onEdit={() => {
+                        if (card.pluginType === 'tapd') return;
+                        if (card.cardType === 'shared' && card.userId !== user?.id) return;
+                        handleOpenTodoModal(todo, card);
+                      }}
                       onDelete={() => handleDeleteTodo(todo.id)}
                       canUpdateProgress={card.pluginType !== 'tapd'}
                       onOpenProgress={() => handleOpenProgressModal(todo)}
@@ -545,6 +602,8 @@ export function DashboardPage() {
                   ))}
               </div>
             </div>
+                );
+              })()}
             </div>
           ))}
         </GridLayoutComponent>
@@ -553,13 +612,16 @@ export function DashboardPage() {
       {showTodoModal && (
         <TodoModal
           todo={editingTodo}
+          card={activeTodoCard}
           tags={tags}
+          mentionCandidates={activeTodoCard?.participants ?? []}
           onSave={handleSaveTodo}
           onCreateTag={(name, color) => createTagMutation.mutate({ name, color })}
           defaultTagIds={defaultTagIds}
           onClose={() => {
             setShowTodoModal(false);
             setEditingTodo(null);
+            setActiveTodoCard(null);
           }}
         />
       )}
@@ -567,6 +629,7 @@ export function DashboardPage() {
       {showCardModal && (
         <CardModal
           card={editingCard}
+          cards={cards}
           tags={tags}
           onSave={handleSaveCard}
           onCreateTag={(name, color) => createTagMutation.mutate({ name, color })}
@@ -721,6 +784,50 @@ export function DashboardPage() {
           onDelete={handleDeleteTag}
           onClose={() => setShowTagModal(false)}
         />
+      )}
+
+      {showProfileModal && (
+        <div className="overlay open" onClick={() => setShowProfileModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">个人信息</div>
+              <button className="modal-close" onClick={() => setShowProfileModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <label className="goal-label" htmlFor="nickname-input">昵称（最多 100 字）</label>
+              <input
+                id="nickname-input"
+                className="goal-input"
+                maxLength={100}
+                placeholder="用于共享卡片 @ 提及展示"
+                value={nicknameDraft}
+                onChange={(e) => setNicknameDraft(e.target.value)}
+              />
+              <div className="goal-meta">
+                <span>留空后保存将恢复为邮箱前缀显示</span>
+                <span>{nicknameDraft.length}/100</span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowProfileModal(false)}
+                disabled={updateProfileMutation.isPending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveProfile}
+                disabled={updateProfileMutation.isPending}
+              >
+                {updateProfileMutation.isPending ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showGoalModal && (

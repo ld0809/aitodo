@@ -10,6 +10,7 @@ interface HeaderProps {
   onNewCard: () => void;
   onOpenAiReport: () => void;
   onOpenTags: () => void;
+  onOpenProfileSettings: () => void;
   onOpenGoalSettings: () => void;
 }
 
@@ -21,6 +22,7 @@ export function Header({
   onNewCard,
   onOpenAiReport,
   onOpenTags,
+  onOpenProfileSettings,
   onOpenGoalSettings,
 }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -77,7 +79,14 @@ export function Header({
           </div>
           {showUserMenu && (
             <div className="user-menu">
-              <div onClick={() => {}}>👤 个人中心</div>
+              <div
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onOpenProfileSettings();
+                }}
+              >
+                👤 个人信息
+              </div>
               <div
                 onClick={() => {
                   setShowUserMenu(false);
@@ -86,8 +95,8 @@ export function Header({
               >
                 🎯 目标设置
               </div>
-              <div onClick={onOpenTags}>🏷️ 标签管理</div>
-              <div className="danger" onClick={onLogout}>
+              <div onClick={() => { setShowUserMenu(false); onOpenTags(); }}>🏷️ 标签管理</div>
+              <div className="danger" onClick={() => { setShowUserMenu(false); onLogout(); }}>
                 🚪 退出登录
               </div>
             </div>

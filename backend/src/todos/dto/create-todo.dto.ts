@@ -24,4 +24,8 @@ export class CreateTodoDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   tagIds?: string[];
+
+  @IsOptional()
+  @IsUUID('4')
+  cardId?: string;
 }

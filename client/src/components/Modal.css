@@ -330,3 +330,86 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.participant-input-row,
+.participant-copy-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.participant-input-row input,
+.participant-copy-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.participant-chip-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.participant-chip {
+  font-size: 12px;
+  background: var(--accent2);
+  color: var(--accent);
+  border: 1px solid var(--accent2);
+  border-radius: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.mention-editor {
+  position: relative;
+}
+
+.mention-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg2);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.mention-option {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--txt);
+}
+
+.mention-option:hover,
+.mention-option.active {
+  background: var(--bg);
+}
+
+.mention-option small {
+  color: var(--txt3);
+}
+
+.mention-empty {
+  padding: 10px 12px;
+  color: var(--txt3);
+  font-size: 12px;
+}
+
+.mention-hint {
+  margin-top: 8px;
+  color: var(--txt3);
+  font-size: 12px;
+}

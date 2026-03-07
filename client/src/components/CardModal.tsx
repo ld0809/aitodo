@@ -1,25 +1,40 @@
-import { useState, useEffect, useMemo } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useEffect, useMemo, useState } from 'react';
 import type { Card, Tag } from '../types';
 import type { CreateCardDto, UpdateCardDto } from '../api/cards';
 import { getUsers, type TapdUser } from '../api/tapd';
+import { useAuthStore } from '../store/authStore';
 import './Modal.css';
 
 interface CardModalProps {
   card: Card | null;
+  cards: Card[];
   tags: Tag[];
   onSave: (data: CreateCardDto | UpdateCardDto) => void;
   onCreateTag: (name: string, color: string) => void;
   onClose: () => void;
 }
 
-export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModalProps) {
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+type CardMode = 'personal' | 'shared' | 'tapd';
+
+export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: CardModalProps) {
+  const currentUser = useAuthStore((state) => state.user);
+
   const [name, setName] = useState('');
+  const [cardMode, setCardMode] = useState<CardMode>('personal');
   const [sortBy, setSortBy] = useState<'due_at' | 'created_at' | 'execute_at'>('due_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState('');
 
-  const [pluginType, setPluginType] = useState<'local_todo' | 'tapd'>('local_todo');
+  const [participantEmails, setParticipantEmails] = useState<string[]>([]);
+  const [participantEmailDraft, setParticipantEmailDraft] = useState('');
+  const [copyFromCardId, setCopyFromCardId] = useState('');
+
   const [workspaceId, setWorkspaceId] = useState('');
   const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
   const [iterationId, setIterationId] = useState('');
@@ -27,34 +42,76 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
   const [tapdUsers, setTapdUsers] = useState<TapdUser[]>([]);
   const [userKeyword, setUserKeyword] = useState('');
 
+  const cardType: 'personal' | 'shared' = cardMode === 'shared' ? 'shared' : 'personal';
+  const pluginType: 'local_todo' | 'tapd' = cardMode === 'tapd' ? 'tapd' : 'local_todo';
+  const isSharedCard = cardMode === 'shared';
+  const isTapdCard = cardMode === 'tapd';
+
   useEffect(() => {
     if (card) {
       setName(card.name);
+      if (card.pluginType === 'tapd') {
+        setCardMode('tapd');
+      } else if ((card.cardType ?? 'personal') === 'shared') {
+        setCardMode('shared');
+      } else {
+        setCardMode('personal');
+      }
       setSortBy(card.sortBy);
       setSortOrder(card.sortOrder);
       setSelectedTagIds((Array.isArray(card.tags) ? card.tags : []).map((t) => t.id));
+      setParticipantEmails(
+        [...new Set((Array.isArray(card.participants) ? card.participants : []).map((participant) => normalizeEmail(participant.email)))]
+      );
+      setCopyFromCardId('');
 
       if (card.pluginType === 'tapd' && card.pluginConfigJson) {
         try {
-          const config = JSON.parse(card.pluginConfigJson);
-          setPluginType('tapd');
+          const config = JSON.parse(card.pluginConfigJson) as {
+            workspaceId?: string;
+            contentType?: 'all' | 'requirements' | 'bugs';
+            iterationId?: string;
+            ownerIds?: string[];
+          };
           setWorkspaceId(config.workspaceId || '');
           setContentType(config.contentType || 'all');
           setIterationId(config.iterationId || '');
           setOwnerIds(Array.isArray(config.ownerIds) ? config.ownerIds : []);
         } catch {
-          setPluginType('tapd');
           setOwnerIds([]);
         }
       } else {
-        setPluginType(card.pluginType === 'tapd' ? 'tapd' : 'local_todo');
+        setWorkspaceId('');
+        setContentType('all');
+        setIterationId('');
         setOwnerIds([]);
       }
+      return;
     }
+
+    setName('');
+    setCardMode('personal');
+    setSortBy('due_at');
+    setSortOrder('asc');
+    setSelectedTagIds([]);
+    setNewTagName('');
+    setParticipantEmails([]);
+    setParticipantEmailDraft('');
+    setCopyFromCardId('');
+    setWorkspaceId('');
+    setContentType('all');
+    setIterationId('');
+    setOwnerIds([]);
+    setTapdUsers([]);
+    setUserKeyword('');
   }, [card]);
 
   useEffect(() => {
-    if (pluginType !== 'tapd') {
+    if (!isTapdCard) {
+      setWorkspaceId('');
+      setContentType('all');
+      setIterationId('');
+      setOwnerIds([]);
       setTapdUsers([]);
       return;
     }
@@ -68,8 +125,7 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
     getUsers(projectId)
       .then((users) => setTapdUsers(Array.isArray(users) ? users : []))
       .catch(() => setTapdUsers([]));
-  }, [pluginType, workspaceId]);
-
+  }, [isTapdCard, workspaceId]);
 
   const filteredUsers = useMemo(() => {
     const keyword = userKeyword.trim().toLowerCase();
@@ -85,8 +141,57 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
     [tapdUsers, ownerIds],
   );
 
+  const copySourceCards = useMemo(
+    () =>
+      (Array.isArray(cards) ? cards : []).filter(
+        (item) => item.cardType === 'shared' && item.id !== card?.id && item.userId === currentUser?.id,
+      ),
+    [cards, card?.id, currentUser?.id],
+  );
+
   const toggleOwner = (id: string) => {
     setOwnerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]));
+  };
+
+  const addParticipantEmail = () => {
+    const normalized = normalizeEmail(participantEmailDraft);
+    if (!normalized) {
+      return;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(normalized)) {
+      alert('请输入有效邮箱');
+      return;
+    }
+
+    setParticipantEmails((prev) => [...new Set([...prev, normalized])]);
+    setParticipantEmailDraft('');
+  };
+
+  const removeParticipantEmail = (email: string) => {
+    setParticipantEmails((prev) => prev.filter((item) => item !== email));
+  };
+
+  const handleCopyParticipants = () => {
+    if (!copyFromCardId) {
+      return;
+    }
+    const sourceCard = copySourceCards.find((item) => item.id === copyFromCardId);
+    if (!sourceCard) {
+      return;
+    }
+    const copiedEmails = [...new Set((Array.isArray(sourceCard.participants) ? sourceCard.participants : []).map((item) => normalizeEmail(item.email)))];
+    setParticipantEmails(copiedEmails);
+  };
+
+  const handleCreateTag = () => {
+    if (!newTagName.trim()) return;
+    onCreateTag(newTagName.trim(), '#3b82f6');
+    setNewTagName('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -105,37 +210,23 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
 
     const data: CreateCardDto | UpdateCardDto = {
       name: name.trim(),
+      cardType,
       sortBy,
       sortOrder,
       tagIds: selectedTagIds,
       pluginType,
       pluginConfig,
-    } as CreateCardDto | UpdateCardDto;
+      participantEmails: isSharedCard ? participantEmails : undefined,
+    };
 
     onSave(data);
-  };
-
-  const toggleTag = (tagId: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId)
-        ? prev.filter((id) => id !== tagId)
-        : [...prev, tagId]
-    );
-  };
-
-  const handleCreateTag = () => {
-    if (!newTagName.trim()) return;
-    onCreateTag(newTagName.trim(), '#3b82f6');
-    setNewTagName('');
   };
 
   return (
     <div className="overlay open" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">
-            {card ? '编辑卡片' : '新建卡片'}
-          </div>
+          <div className="modal-title">{card ? '编辑卡片' : '新建卡片'}</div>
           <button className="modal-close" onClick={onClose}>
             ×
           </button>
@@ -154,27 +245,76 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
             </div>
 
             <div className="mb">
-              <label>数据来源</label>
-              <select
-                value={pluginType}
-                onChange={(e) => setPluginType(e.target.value as 'local_todo' | 'tapd')}
-                style={{ width: '100%' }}
-              >
-                <option value="local_todo">本地待办</option>
-                <option value="tapd">TAPD</option>
+              <label>卡片类型</label>
+              <select value={cardMode} onChange={(e) => setCardMode(e.target.value as CardMode)} style={{ width: '100%' }}>
+                <option value="personal">个人卡片</option>
+                <option value="shared">共享卡片</option>
+                <option value="tapd">TAPD卡片</option>
               </select>
             </div>
 
-            {pluginType === 'tapd' && (
+            {isSharedCard && (
               <>
                 <div className="mb">
-                  <label>Workspace ID <span style={{ color: '#999' }}>(必填)</span></label>
+                  <label>参与人员（邮箱）</label>
+                  <div className="participant-input-row">
+                    <input
+                      type="email"
+                      placeholder="输入邮箱后回车或点击添加"
+                      value={participantEmailDraft}
+                      onChange={(e) => setParticipantEmailDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addParticipantEmail();
+                        }
+                      }}
+                    />
+                    <button type="button" className="owner-action-btn" onClick={addParticipantEmail}>
+                      添加
+                    </button>
+                  </div>
+                  <div className="participant-chip-list">
+                    {participantEmails.map((email) => (
+                      <span key={email} className="participant-chip" onClick={() => removeParticipantEmail(email)}>
+                        {email} ×
+                      </span>
+                    ))}
+                    {participantEmails.length === 0 && <div className="owner-empty">暂无参与人员</div>}
+                  </div>
+                </div>
+
+                <div className="mb">
+                  <label>从共享卡片复制参与人员</label>
+                  <div className="participant-copy-row">
+                    <select value={copyFromCardId} onChange={(e) => setCopyFromCardId(e.target.value)}>
+                      <option value="">选择共享卡片</option>
+                      {copySourceCards.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" className="owner-action-btn" onClick={handleCopyParticipants}>
+                      复制
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isTapdCard && (
+              <>
+                <div className="mb">
+                  <label>
+                    Workspace ID <span style={{ color: '#999' }}>(必填)</span>
+                  </label>
                   <input
                     type="text"
                     placeholder="例如: 54330609"
                     value={workspaceId}
                     onChange={(e) => setWorkspaceId(e.target.value)}
-                    required={pluginType === 'tapd'}
+                    required={isTapdCard}
                   />
                 </div>
 
@@ -192,48 +332,42 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
                 </div>
 
                 <div className="mb">
-                  <label>迭代 ID <span style={{ color: '#999' }}>(可选)</span></label>
-                  <input
-                    type="text"
-                    placeholder="不填则显示全部迭代"
-                    value={iterationId}
-                    onChange={(e) => setIterationId(e.target.value)}
-                  />
+                  <label>
+                    迭代 ID <span style={{ color: '#999' }}>(可选)</span>
+                  </label>
+                  <input type="text" placeholder="不填则显示全部迭代" value={iterationId} onChange={(e) => setIterationId(e.target.value)} />
                 </div>
 
                 <div className="mb">
-                  <label>处理人过滤 <span style={{ color: '#999' }}>(可多选)</span></label>
+                  <label>
+                    处理人过滤 <span style={{ color: '#999' }}>(可多选)</span>
+                  </label>
                   <div className="owner-filter-box">
                     <div className="owner-filter-toolbar">
-                      <input
-                        type="text"
-                        placeholder="搜索姓名或ID"
-                        value={userKeyword}
-                        onChange={(e) => setUserKeyword(e.target.value)}
-                      />
-                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds(filteredUsers.map((u) => u.id))}>全选</button>
-                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds([])}>清空</button>
+                      <input type="text" placeholder="搜索姓名或ID" value={userKeyword} onChange={(e) => setUserKeyword(e.target.value)} />
+                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds(filteredUsers.map((u) => u.id))}>
+                        全选
+                      </button>
+                      <button type="button" className="owner-action-btn" onClick={() => setOwnerIds([])}>
+                        清空
+                      </button>
                     </div>
 
                     {selectedUsers.length > 0 && (
                       <div className="owner-selected-list">
                         {selectedUsers.map((user) => (
                           <span key={user.id} className="owner-chip" onClick={() => toggleOwner(user.id)}>
-                            {(user.name || user.nickname || user.id)} ×
+                            {user.name || user.nickname || user.id} ×
                           </span>
                         ))}
                       </div>
                     )}
 
                     <div className="owner-options">
-                      {filteredUsers.map((u) => (
-                        <label key={u.id} className="owner-option">
-                          <input
-                            type="checkbox"
-                            checked={ownerIds.includes(u.id)}
-                            onChange={() => toggleOwner(u.id)}
-                          />
-                          <span>{(u.name || u.nickname || u.id)}</span>
+                      {filteredUsers.map((item) => (
+                        <label key={item.id} className="owner-option">
+                          <input type="checkbox" checked={ownerIds.includes(item.id)} onChange={() => toggleOwner(item.id)} />
+                          <span>{item.name || item.nickname || item.id}</span>
                         </label>
                       ))}
                       {filteredUsers.length === 0 && <div className="owner-empty">无匹配成员</div>}
@@ -246,26 +380,23 @@ export function CardModal({ card, tags, onSave, onCreateTag, onClose }: CardModa
             <div className="mb">
               <label>排序方式</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} style={{ flex: 1 }}>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'due_at' | 'created_at' | 'execute_at')} style={{ flex: 1 }}>
                   <option value="due_at">按截止时间</option>
                   <option value="created_at">按创建时间</option>
                   <option value="execute_at">按执行时间</option>
                 </select>
-                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as any)} style={{ flex: 1 }}>
+                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')} style={{ flex: 1 }}>
                   <option value="asc">升序</option>
                   <option value="desc">降序</option>
                 </select>
               </div>
             </div>
+
             <div className="mb">
               <label>标签</label>
               <div className="tag-selector">
                 {(Array.isArray(tags) ? tags : []).map((tag) => (
-                  <span
-                    key={tag.id}
-                    className={`tag-option ${selectedTagIds.includes(tag.id) ? 'selected' : ''}`}
-                    onClick={() => toggleTag(tag.id)}
-                  >
+                  <span key={tag.id} className={`tag-option ${selectedTagIds.includes(tag.id) ? 'selected' : ''}`} onClick={() => toggleTag(tag.id)}>
                     {tag.name}
                   </span>
                 ))}

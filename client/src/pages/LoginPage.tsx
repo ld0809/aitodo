@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import './AuthPages.css';
@@ -21,8 +22,12 @@ export function LoginPage() {
       const response = await authApi.login(email, password);
       setAuth(response.data.user, response.data.accessToken);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '登录失败，请检查邮箱和密码');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '登录失败，请检查邮箱和密码');
+      } else {
+        setError('登录失败，请检查邮箱和密码');
+      }
     } finally {
       setLoading(false);
     }

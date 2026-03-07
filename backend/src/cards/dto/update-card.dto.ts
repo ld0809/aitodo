@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayUnique, IsArray, IsEnum, IsInt, IsObject, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { ArrayUnique, IsArray, IsEmail, IsEnum, IsInt, IsObject, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class UpdateCardDto {
   @IsOptional()
@@ -44,8 +44,19 @@ export class UpdateCardDto {
   pluginType?: string;
 
   @IsOptional()
+  @IsEnum(['personal', 'shared'])
+  cardType?: 'personal' | 'shared';
+
+  @IsOptional()
   @IsObject()
   pluginConfig?: Record<string, unknown>;
+
+  @IsOptional()
+  @Type(() => String)
+  @IsArray()
+  @ArrayUnique()
+  @IsEmail({}, { each: true })
+  participantEmails?: string[];
 
   @IsOptional()
   @Type(() => String)

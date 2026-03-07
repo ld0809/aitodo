@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import './AuthPages.css';
@@ -23,7 +24,7 @@ export function RegisterPage() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // 开发环境标志
-  const isDev = process.env.NODE_ENV === 'development';
+  const isDev = import.meta.env.DEV;
 
   useEffect(() => {
     if (step === 'verify' && inputRefs.current[0]) {
@@ -91,9 +92,9 @@ export function RegisterPage() {
       const registerResponse = await authApi.register(email, password);
       
       // Check for debug code in development environment
-      const responseData = registerResponse.data.data;
-      if (isDev && (responseData.debugVerificationCode || responseData.debugCode)) {
-        const debug = responseData.debugVerificationCode || responseData.debugCode;
+      const responseData = registerResponse.data;
+      if (isDev && responseData.debugVerificationCode) {
+        const debug = responseData.debugVerificationCode;
         setDebugCode(debug);
         console.log('[开发环境] 验证码:', debug);
       }
@@ -103,8 +104,12 @@ export function RegisterPage() {
       
       // Switch to verification step
       setStep('verify');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '注册失败，请重试');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '注册失败，请重试');
+      } else {
+        setError('注册失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -120,11 +125,16 @@ export function RegisterPage() {
 
     setLoading(true);
     try {
-      const response = await authApi.verifyEmail(email, verificationCode);
-      setAuth(response.data.user, response.data.accessToken);
+      await authApi.verifyEmail(email, verificationCode);
+      const loginResponse = await authApi.login(email, password);
+      setAuth(loginResponse.data.user, loginResponse.data.accessToken);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '验证失败，请重试');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '验证失败，请重试');
+      } else {
+        setError('验证失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -133,11 +143,18 @@ export function RegisterPage() {
   const handleResend = async () => {
     setResending(true);
     try {
-      await authApi.sendEmailCode(email);
+      const resendResponse = await authApi.sendEmailCode(email);
       setError('');
+      if (isDev && resendResponse.data.debugCode) {
+        setDebugCode(resendResponse.data.debugCode);
+      }
       alert('验证码已重新发送');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '发送失败，请重试');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '发送失败，请重试');
+      } else {
+        setError('发送失败，请重试');
+      }
     } finally {
       setResending(false);
     }

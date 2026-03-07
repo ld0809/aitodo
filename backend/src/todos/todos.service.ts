@@ -1,9 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { Card } from '../database/entities/card.entity';
 import { Tag } from '../database/entities/tag.entity';
 import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
+import { User } from '../database/entities/user.entity';
 import { CreateTodoProgressDto } from './dto/create-todo-progress.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { QueryTodosDto } from './dto/query-todos.dto';
@@ -18,19 +20,46 @@ export class TodosService {
     private readonly tagRepository: Repository<Tag>,
     @InjectRepository(TodoProgressEntry)
     private readonly todoProgressRepository: Repository<TodoProgressEntry>,
+    @InjectRepository(Card)
+    private readonly cardRepository: Repository<Card>,
   ) {}
 
   async create(userId: string, dto: CreateTodoDto) {
     const tags = await this.getValidatedTags(userId, dto.tagIds);
+    let card: Card | null = null;
+    let assignees: User[] = [];
+
+    if (dto.cardId) {
+      card = await this.cardRepository.findOne({
+        where: { id: dto.cardId },
+        relations: {
+          participants: true,
+        },
+      });
+
+      if (!card) {
+        throw new NotFoundException('card not found');
+      }
+
+      if (card.userId !== userId) {
+        throw new ForbiddenException('only card owner can create todo in this card');
+      }
+
+      if (card.cardType === 'shared') {
+        assignees = this.resolveMentionedParticipants(dto.content, card.participants ?? []);
+      }
+    }
 
     const todo = this.todoRepository.create({
       userId,
+      cardId: card?.id ?? null,
       content: dto.content,
       dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
       executeAt: dto.executeAt ? new Date(dto.executeAt) : null,
       status: dto.status ?? 'todo',
       deletedAt: null,
       tags,
+      assignees,
     });
 
     const savedTodo = await this.todoRepository.save(todo);
@@ -41,6 +70,7 @@ export class TodosService {
     const queryBuilder = this.todoRepository
       .createQueryBuilder('todo')
       .leftJoinAndSelect('todo.tags', 'tag')
+      .leftJoinAndSelect('todo.assignees', 'assignee')
       .where('todo.user_id = :userId', { userId })
       .andWhere('todo.deleted_at IS NULL')
       .distinct(true);
@@ -90,6 +120,7 @@ export class TodosService {
     return this.todoRepository
       .createQueryBuilder('todo')
       .leftJoinAndSelect('todo.tags', 'tag')
+      .leftJoinAndSelect('todo.assignees', 'assignee')
       .where('todo.user_id = :userId', { userId })
       .andWhere('todo.deleted_at IS NULL')
       .andWhere('todo.due_at >= :today', { today })
@@ -108,6 +139,7 @@ export class TodosService {
     return this.todoRepository
       .createQueryBuilder('todo')
       .leftJoinAndSelect('todo.tags', 'tag')
+      .leftJoinAndSelect('todo.assignees', 'assignee')
       .where('todo.user_id = :userId', { userId })
       .andWhere('todo.deleted_at IS NULL')
       .andWhere('todo.due_at >= :today', { today })
@@ -117,38 +149,13 @@ export class TodosService {
   }
 
   async findOne(userId: string, id: string) {
-    const todo = await this.todoRepository.findOne({
-      where: {
-        id,
-        userId,
-        deletedAt: IsNull(),
-      },
-      relations: {
-        tags: true,
-      },
-    });
-
-    if (!todo) {
-      throw new NotFoundException('todo not found');
-    }
-
-    return todo;
+    return this.findAccessibleTodoOrThrow(userId, id);
   }
 
   async update(userId: string, id: string, dto: UpdateTodoDto) {
-    const todo = await this.todoRepository.findOne({
-      where: {
-        id,
-        userId,
-        deletedAt: IsNull(),
-      },
-      relations: {
-        tags: true,
-      },
-    });
-
-    if (!todo) {
-      throw new NotFoundException('todo not found');
+    const todo = await this.findAccessibleTodoOrThrow(userId, id);
+    if (todo.userId !== userId) {
+      throw new ForbiddenException('only todo owner can update todo');
     }
 
     if (dto.content !== undefined) {
@@ -172,17 +179,7 @@ export class TodosService {
   }
 
   async complete(userId: string, id: string, completed: boolean) {
-    const todo = await this.todoRepository.findOne({
-      where: {
-        id,
-        userId,
-        deletedAt: IsNull(),
-      },
-    });
-
-    if (!todo) {
-      throw new NotFoundException('todo not found');
-    }
+    const todo = await this.findAccessibleTodoOrThrow(userId, id);
 
     todo.status = completed ? 'done' : 'todo';
     todo.completedAt = completed ? new Date() : null;
@@ -196,15 +193,9 @@ export class TodosService {
   }
 
   async remove(userId: string, id: string) {
-    const todo = await this.todoRepository.findOne({
-      where: {
-        id,
-        userId,
-        deletedAt: IsNull(),
-      },
-    });
-    if (!todo) {
-      throw new NotFoundException('todo not found');
+    const todo = await this.findAccessibleTodoOrThrow(userId, id);
+    if (todo.userId !== userId) {
+      throw new ForbiddenException('only todo owner can delete todo');
     }
 
     todo.deletedAt = new Date();
@@ -217,7 +208,6 @@ export class TodosService {
     const todo = await this.findOne(userId, id);
     return this.todoProgressRepository.find({
       where: {
-        userId,
         todoId: todo.id,
       },
       order: {
@@ -266,5 +256,62 @@ export class TodosService {
     }
 
     return tags;
+  }
+
+  private async findAccessibleTodoOrThrow(userId: string, id: string) {
+    const todo = await this.todoRepository
+      .createQueryBuilder('todo')
+      .leftJoinAndSelect('todo.tags', 'tag')
+      .leftJoinAndSelect('todo.assignees', 'assignee')
+      .leftJoinAndSelect('todo.card', 'card')
+      .leftJoin('todo.assignees', 'accessAssignee')
+      .where('todo.id = :id', { id })
+      .andWhere('todo.deleted_at IS NULL')
+      .andWhere('(todo.user_id = :userId OR accessAssignee.id = :userId)', { userId })
+      .distinct(true)
+      .getOne();
+
+    if (!todo) {
+      throw new NotFoundException('todo not found');
+    }
+
+    return todo;
+  }
+
+  private resolveMentionedParticipants(content: string, participants: User[]) {
+    if (!content || participants.length === 0) {
+      return [];
+    }
+
+    const mentionTokens = this.extractMentionTokens(content);
+    if (mentionTokens.size === 0) {
+      return [];
+    }
+
+    return participants.filter((participant) => mentionTokens.has(this.buildMentionKey(participant).toLowerCase()));
+  }
+
+  private extractMentionTokens(content: string) {
+    const tokens = new Set<string>();
+    const mentionRegex = /@([^\s@,.;:!?()[\]{}"'`]+)/g;
+    let match: RegExpExecArray | null = mentionRegex.exec(content);
+
+    while (match) {
+      const rawToken = match[1]?.trim().toLowerCase();
+      if (rawToken) {
+        tokens.add(rawToken);
+      }
+      match = mentionRegex.exec(content);
+    }
+
+    return tokens;
+  }
+
+  private buildMentionKey(user: Pick<User, 'email' | 'nickname'>) {
+    const trimmedNickname = user.nickname?.trim().replace(/\s+/g, '');
+    if (trimmedNickname) {
+      return trimmedNickname;
+    }
+    return user.email.split('@')[0] ?? user.email;
   }
 }

@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
+import axios from 'axios';
 import { authApi } from '../api/auth';
-import { useAuthStore } from '../store/authStore';
 import './AuthPages.css';
 
 export function VerifyPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const setAuth = useAuthStore((state) => state.setAuth);
   const email = (location.state as { email?: string })?.email || '';
   
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -66,11 +65,14 @@ export function VerifyPage() {
 
     setLoading(true);
     try {
-      const response = await authApi.verifyEmail(email, verificationCode);
-      setAuth(response.data.user, response.data.accessToken);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '验证失败，请重试');
+      await authApi.verifyEmail(email, verificationCode);
+      navigate('/login');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '验证失败，请重试');
+      } else {
+        setError('验证失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -82,8 +84,12 @@ export function VerifyPage() {
       await authApi.sendEmailCode(email);
       setError('');
       alert('验证码已重新发送');
-    } catch (err: any) {
-      setError(err.response?.data?.message || '发送失败，请重试');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError((err.response?.data as { message?: string } | undefined)?.message || '发送失败，请重试');
+      } else {
+        setError('发送失败，请重试');
+      }
     } finally {
       setResending(false);
     }

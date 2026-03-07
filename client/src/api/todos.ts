@@ -6,6 +6,7 @@ export interface CreateTodoDto {
   dueAt?: string;
   executeAt?: string;
   tagIds?: string[];
+  cardId?: string;
 }
 
 export interface UpdateTodoDto {

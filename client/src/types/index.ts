@@ -10,6 +10,13 @@ export interface User {
   updatedAt: string;
 }
 
+export interface CardParticipant {
+  id: string;
+  email: string;
+  nickname?: string;
+  mentionKey: string;
+}
+
 export interface Tag {
   id: string;
   userId: string;
@@ -22,6 +29,7 @@ export interface Tag {
 export interface Todo {
   id: string;
   userId: string;
+  cardId?: string | null;
   content: string;
   dueAt?: string;
   executeAt?: string;
@@ -30,6 +38,7 @@ export interface Todo {
   progressCount?: number;
   url?: string;
   tags: Tag[];
+  assignees?: CardParticipant[];
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +55,7 @@ export interface Card {
   id: string;
   userId: string;
   name: string;
+  cardType: 'personal' | 'shared';
   sortBy: 'due_at' | 'created_at' | 'execute_at';
   sortOrder: 'asc' | 'desc';
   x: number;
@@ -55,6 +65,7 @@ export interface Card {
   pluginType: string;
   pluginConfigJson?: string;
   tags: Tag[];
+  participants?: CardParticipant[];
   todos?: Todo[];
   createdAt: string;
   updatedAt: string;

@@ -1,9 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 // Test configuration
 const BASE_URL = 'http://localhost:5173';
-const API_URL = 'http://localhost:3000/api/v1';
-
 // Helper function to generate random email
 const generateEmail = () => `test${Date.now()}@example.com`;
 

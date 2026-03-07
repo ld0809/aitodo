@@ -1,23 +1,80 @@
-import { useState, useEffect } from 'react';
-import type { Todo, Tag } from '../types';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Card, CardParticipant, Todo, Tag } from '../types';
 import type { CreateTodoDto, UpdateTodoDto } from '../api/todos';
 import './Modal.css';
 
 interface TodoModalProps {
   defaultTagIds?: string[];
   todo: Todo | null;
+  card?: Card | null;
   tags: Tag[];
+  mentionCandidates?: CardParticipant[];
   onSave: (data: CreateTodoDto | UpdateTodoDto) => void;
   onCreateTag: (name: string, color: string) => void;
   onClose: () => void;
 }
 
-export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTagIds = [] }: TodoModalProps) {
+interface ActiveMention {
+  start: number;
+  end: number;
+  query: string;
+}
+
+function detectActiveMention(text: string, cursor: number): ActiveMention | null {
+  const prefix = text.slice(0, cursor);
+  const atIndex = prefix.lastIndexOf('@');
+  if (atIndex < 0) {
+    return null;
+  }
+
+  const token = prefix.slice(atIndex + 1);
+  if (token.includes(' ') || token.includes('\n') || token.includes('\t') || token.includes('@')) {
+    return null;
+  }
+
+  return {
+    start: atIndex,
+    end: cursor,
+    query: token.trim().toLowerCase(),
+  };
+}
+
+export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defaultTagIds = [], mentionCandidates = [] }: TodoModalProps) {
   const [content, setContent] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [executeAt, setExecuteAt] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(defaultTagIds);
   const [newTagName, setNewTagName] = useState('');
+  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
+  const [highlightedMentionIndex, setHighlightedMentionIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const isSharedCard = (card?.cardType ?? 'personal') === 'shared';
+
+  const normalizedMentionCandidates = useMemo(
+    () =>
+      [...new Map(mentionCandidates.map((item) => [item.id, item])).values()].map((item) => ({
+        ...item,
+        mentionKey: item.mentionKey?.trim() || item.email.split('@')[0] || item.email,
+      })),
+    [mentionCandidates],
+  );
+
+  const filteredMentionCandidates = useMemo(() => {
+    if (!isSharedCard || !activeMention) {
+      return [];
+    }
+    const query = activeMention.query;
+    if (!query) {
+      return normalizedMentionCandidates;
+    }
+    return normalizedMentionCandidates.filter((item) => {
+      const nickname = (item.nickname || '').toLowerCase();
+      const mentionKey = (item.mentionKey || '').toLowerCase();
+      const email = item.email.toLowerCase();
+      return nickname.includes(query) || mentionKey.includes(query) || email.includes(query);
+    });
+  }, [isSharedCard, activeMention, normalizedMentionCandidates]);
 
   useEffect(() => {
     if (todo) {
@@ -25,29 +82,89 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
       setDueAt(todo.dueAt ? todo.dueAt.slice(0, 16) : '');
       setExecuteAt(todo.executeAt ? todo.executeAt.slice(0, 16) : '');
       setSelectedTagIds((Array.isArray(todo.tags) ? todo.tags : []).map((t) => t.id));
+      setActiveMention(null);
+      setHighlightedMentionIndex(0);
+      return;
     }
-  }, [todo]);
+
+    setContent('');
+    setDueAt('');
+    setExecuteAt('');
+    setSelectedTagIds(defaultTagIds);
+    setNewTagName('');
+    setActiveMention(null);
+    setHighlightedMentionIndex(0);
+  }, [todo, defaultTagIds]);
+
+  useEffect(() => {
+    if (highlightedMentionIndex >= filteredMentionCandidates.length) {
+      setHighlightedMentionIndex(0);
+    }
+  }, [filteredMentionCandidates.length, highlightedMentionIndex]);
+
+  const updateMentionStateByCursor = (text: string, cursor: number) => {
+    if (!isSharedCard) {
+      setActiveMention(null);
+      return;
+    }
+
+    const detected = detectActiveMention(text, cursor);
+    setActiveMention(detected);
+    if (detected) {
+      setHighlightedMentionIndex(0);
+    }
+  };
+
+  const applyMention = (candidate: CardParticipant & { mentionKey: string }) => {
+    if (!activeMention) {
+      return;
+    }
+    const before = content.slice(0, activeMention.start);
+    const after = content.slice(activeMention.end);
+    const inserted = `@${candidate.mentionKey} `;
+    const nextContent = `${before}${inserted}${after}`;
+    const nextCursor = before.length + inserted.length;
+
+    setContent(nextContent);
+    setActiveMention(null);
+    setHighlightedMentionIndex(0);
+
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) {
+        return;
+      }
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
 
-    const data: CreateTodoDto | UpdateTodoDto = {
+    if (todo) {
+      const data: UpdateTodoDto = {
+        content: content.trim(),
+        dueAt: dueAt || undefined,
+        executeAt: executeAt || undefined,
+        tagIds: selectedTagIds,
+      };
+      onSave(data);
+      return;
+    }
+
+    const data: CreateTodoDto = {
       content: content.trim(),
       dueAt: dueAt || undefined,
       executeAt: executeAt || undefined,
       tagIds: selectedTagIds,
+      cardId: card?.id,
     };
-
     onSave(data);
   };
 
   const toggleTag = (tagId: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId)
-        ? prev.filter((id) => id !== tagId)
-        : [...prev, tagId]
-    );
+    setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]));
   };
 
   const handleCreateTag = () => {
@@ -56,13 +173,54 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
     setNewTagName('');
   };
 
+  const handleTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = event.target.value;
+    setContent(text);
+    updateMentionStateByCursor(text, event.target.selectionStart);
+  };
+
+  const handleTextareaClickOrKeyUp = (event: React.KeyboardEvent<HTMLTextAreaElement> | React.MouseEvent<HTMLTextAreaElement>) => {
+    const target = event.currentTarget;
+    updateMentionStateByCursor(target.value, target.selectionStart);
+  };
+
+  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!activeMention || filteredMentionCandidates.length === 0) {
+      if (event.key === 'Escape') {
+        setActiveMention(null);
+      }
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlightedMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlightedMentionIndex((prev) => (prev - 1 + filteredMentionCandidates.length) % filteredMentionCandidates.length);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const targetCandidate = filteredMentionCandidates[highlightedMentionIndex] ?? filteredMentionCandidates[0];
+      if (targetCandidate) {
+        applyMention(targetCandidate);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setActiveMention(null);
+    }
+  };
+
   return (
     <div className="overlay open" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">
-            {todo ? '编辑待办' : '新建待办'}
-          </div>
+          <div className="modal-title">{todo ? '编辑待办' : '新建待办'}</div>
           <button className="modal-close" onClick={onClose}>
             ×
           </button>
@@ -71,23 +229,48 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
           <div className="modal-body">
             <div className="mb">
               <label>待办内容</label>
-              <textarea
-                className="tx"
-                placeholder="输入待办内容..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                required
-              />
+              <div className="mention-editor">
+                <textarea
+                  ref={textareaRef}
+                  className="tx"
+                  placeholder="输入待办内容..."
+                  value={content}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleTextareaKeyDown}
+                  onKeyUp={handleTextareaClickOrKeyUp}
+                  onClick={handleTextareaClickOrKeyUp}
+                  required
+                />
+                {isSharedCard && activeMention && (
+                  <div className="mention-dropdown">
+                    {filteredMentionCandidates.length === 0 ? (
+                      <div className="mention-empty">无匹配参与人员</div>
+                    ) : (
+                      filteredMentionCandidates.map((candidate, index) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className={`mention-option ${index === highlightedMentionIndex ? 'active' : ''}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            applyMention(candidate);
+                          }}
+                        >
+                          <span>{candidate.mentionKey}</span>
+                          <small>{candidate.nickname ? `${candidate.nickname} · ${candidate.email}` : candidate.email}</small>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {isSharedCard && <div className="mention-hint">输入 `@` 后可选择共享卡片参与人员，按回车确认。</div>}
             </div>
             <div className="mb">
               <label>标签</label>
               <div className="tag-selector">
                 {(Array.isArray(tags) ? tags : []).map((tag) => (
-                  <span
-                    key={tag.id}
-                    className={`tag-option ${selectedTagIds.includes(tag.id) ? 'selected' : ''}`}
-                    onClick={() => toggleTag(tag.id)}
-                  >
+                  <span key={tag.id} className={`tag-option ${selectedTagIds.includes(tag.id) ? 'selected' : ''}`} onClick={() => toggleTag(tag.id)}>
                     {tag.name}
                   </span>
                 ))}
@@ -111,19 +294,11 @@ export function TodoModal({ todo, tags, onSave, onCreateTag, onClose, defaultTag
             <div className="fr">
               <div className="mb">
                 <label>截止时间</label>
-                <input
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                />
+                <input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
               </div>
               <div className="mb">
                 <label>执行时间</label>
-                <input
-                  type="datetime-local"
-                  value={executeAt}
-                  onChange={(e) => setExecuteAt(e.target.value)}
-                />
+                <input type="datetime-local" value={executeAt} onChange={(e) => setExecuteAt(e.target.value)} />
               </div>
             </div>
           </div>

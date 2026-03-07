@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Card } from './card.entity';
 import { Tag } from './tag.entity';
 import { TodoProgressEntry } from './todo-progress.entity';
 import { User } from './user.entity';
@@ -23,6 +24,12 @@ export class Todo {
 
   @ManyToOne(() => User, (user) => user.todos, { onDelete: 'CASCADE' })
   user!: User;
+
+  @Column({ name: 'card_id', type: 'varchar', nullable: true })
+  cardId!: string | null;
+
+  @ManyToOne(() => Card, (card) => card.todos, { onDelete: 'CASCADE', nullable: true })
+  card!: Card | null;
 
   @Column()
   content!: string;
@@ -52,6 +59,14 @@ export class Todo {
     inverseJoinColumn: { name: 'tag_id', referencedColumnName: 'id' },
   })
   tags!: Tag[];
+
+  @ManyToMany(() => User, (user) => user.assignedTodos)
+  @JoinTable({
+    name: 'todo_assignees',
+    joinColumn: { name: 'todo_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
+  })
+  assignees!: User[];
 
   @OneToMany(() => TodoProgressEntry, (entry) => entry.todo)
   progressEntries!: TodoProgressEntry[];

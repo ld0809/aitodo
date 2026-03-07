@@ -20,18 +20,29 @@ export class LocalTodoPlugin implements DataSourcePlugin {
   }
 
   async fetchItems(ctx: PluginFetchContext) {
-    const tagIds = ctx.card.tags.map((tag) => tag.id);
-
     const queryBuilder = this.todoRepository
       .createQueryBuilder('todo')
       .leftJoinAndSelect('todo.tags', 'tag')
-      .where('todo.user_id = :userId', { userId: ctx.userId })
-      .andWhere('todo.deleted_at IS NULL')
       .distinct(true);
 
-    if (tagIds.length > 0) {
-      queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds });
+    if (ctx.card.cardType === 'shared') {
+      queryBuilder.where('todo.card_id = :cardId', { cardId: ctx.card.id });
+
+      if (ctx.userId !== ctx.card.userId) {
+        queryBuilder
+          .innerJoin('todo.assignees', 'assignee')
+          .andWhere('assignee.id = :userId', { userId: ctx.userId });
+      }
+    } else {
+      const tagIds = ctx.card.tags.map((tag) => tag.id);
+      queryBuilder.where('todo.user_id = :userId', { userId: ctx.userId });
+
+      if (tagIds.length > 0) {
+        queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds });
+      }
     }
+
+    queryBuilder.andWhere('todo.deleted_at IS NULL');
 
     const todos = await queryBuilder.getMany();
 

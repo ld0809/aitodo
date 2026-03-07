@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Card } from './card.entity';
 import { EmailCode } from './email-code.entity';
 import { Tag } from './tag.entity';
@@ -51,4 +51,10 @@ export class User {
 
   @OneToMany(() => Card, (card) => card.user)
   cards!: Card[];
+
+  @ManyToMany(() => Card, (card) => card.participants)
+  sharedCards!: Card[];
+
+  @ManyToMany(() => Todo, (todo) => todo.assignees)
+  assignedTodos!: Todo[];
 }

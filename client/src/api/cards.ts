@@ -3,9 +3,13 @@ import apiClient from './client';
 
 export interface CreateCardDto {
   name: string;
+  cardType?: 'personal' | 'shared';
   sortBy?: 'due_at' | 'created_at' | 'execute_at';
   sortOrder?: 'asc' | 'desc';
   tagIds?: string[];
+  participantEmails?: string[];
+  pluginType?: 'local_todo' | 'tapd';
+  pluginConfig?: Record<string, unknown>;
   x?: number;
   y?: number;
   w?: number;
@@ -14,9 +18,13 @@ export interface CreateCardDto {
 
 export interface UpdateCardDto {
   name?: string;
+  cardType?: 'personal' | 'shared';
   sortBy?: 'due_at' | 'created_at' | 'execute_at';
   sortOrder?: 'asc' | 'desc';
   tagIds?: string[];
+  participantEmails?: string[];
+  pluginType?: 'local_todo' | 'tapd';
+  pluginConfig?: Record<string, unknown>;
 }
 
 export interface UpdateLayoutDto {
