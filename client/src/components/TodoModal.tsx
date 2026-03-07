@@ -21,6 +21,75 @@ interface ActiveMention {
   query: string;
 }
 
+interface MentionAnchor {
+  left: number;
+  top: number;
+}
+
+function getMentionAnchor(textarea: HTMLTextAreaElement, cursor: number): MentionAnchor {
+  const style = window.getComputedStyle(textarea);
+  const mirror = document.createElement('div');
+  const copiedStyleKeys = [
+    'boxSizing',
+    'fontFamily',
+    'fontSize',
+    'fontStyle',
+    'fontWeight',
+    'letterSpacing',
+    'lineHeight',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'borderTopWidth',
+    'borderRightWidth',
+    'borderBottomWidth',
+    'borderLeftWidth',
+    'textTransform',
+    'textIndent',
+    'textAlign',
+    'whiteSpace',
+    'wordBreak',
+    'overflowWrap',
+  ] as const;
+
+  for (const key of copiedStyleKeys) {
+    mirror.style[key] = style[key];
+  }
+
+  mirror.style.position = 'absolute';
+  mirror.style.visibility = 'hidden';
+  mirror.style.pointerEvents = 'none';
+  mirror.style.left = '-9999px';
+  mirror.style.top = '0';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+  mirror.style.overflow = 'hidden';
+  mirror.style.width = `${textarea.clientWidth}px`;
+
+  mirror.textContent = textarea.value.slice(0, cursor);
+
+  const marker = document.createElement('span');
+  marker.textContent = textarea.value.slice(cursor) || ' ';
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+
+  const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.4 || 20;
+  const rawLeft = marker.offsetLeft - textarea.scrollLeft;
+  const rawTop = marker.offsetTop - textarea.scrollTop + lineHeight;
+
+  document.body.removeChild(mirror);
+
+  const dropdownWidth = 280;
+  const clampedLeft = Math.max(0, Math.min(rawLeft, Math.max(0, textarea.clientWidth - dropdownWidth - 8)));
+  const clampedTop = Math.max(0, rawTop);
+
+  return {
+    left: clampedLeft,
+    top: clampedTop,
+  };
+}
+
 function detectActiveMention(text: string, cursor: number): ActiveMention | null {
   const prefix = text.slice(0, cursor);
   const atIndex = prefix.lastIndexOf('@');
@@ -47,6 +116,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(defaultTagIds);
   const [newTagName, setNewTagName] = useState('');
   const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
+  const [mentionAnchor, setMentionAnchor] = useState<MentionAnchor | null>(null);
   const [highlightedMentionIndex, setHighlightedMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isSharedCard = (card?.cardType ?? 'personal') === 'shared';
@@ -83,6 +153,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
       setExecuteAt(todo.executeAt ? todo.executeAt.slice(0, 16) : '');
       setSelectedTagIds((Array.isArray(todo.tags) ? todo.tags : []).map((t) => t.id));
       setActiveMention(null);
+      setMentionAnchor(null);
       setHighlightedMentionIndex(0);
       return;
     }
@@ -93,6 +164,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
     setSelectedTagIds(defaultTagIds);
     setNewTagName('');
     setActiveMention(null);
+    setMentionAnchor(null);
     setHighlightedMentionIndex(0);
   }, [todo, defaultTagIds]);
 
@@ -105,14 +177,20 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
   const updateMentionStateByCursor = (text: string, cursor: number) => {
     if (!isSharedCard) {
       setActiveMention(null);
+      setMentionAnchor(null);
       return;
     }
 
     const detected = detectActiveMention(text, cursor);
     setActiveMention(detected);
     if (detected) {
+      if (textareaRef.current) {
+        setMentionAnchor(getMentionAnchor(textareaRef.current, cursor));
+      }
       setHighlightedMentionIndex(0);
+      return;
     }
+    setMentionAnchor(null);
   };
 
   const applyMention = (candidate: CardParticipant & { mentionKey: string }) => {
@@ -127,6 +205,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
 
     setContent(nextContent);
     setActiveMention(null);
+    setMentionAnchor(null);
     setHighlightedMentionIndex(0);
 
     requestAnimationFrame(() => {
@@ -242,7 +321,10 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
                   required
                 />
                 {isSharedCard && activeMention && (
-                  <div className="mention-dropdown">
+                  <div
+                    className="mention-dropdown"
+                    style={mentionAnchor ? { left: `${mentionAnchor.left}px`, top: `${mentionAnchor.top + 6}px` } : undefined}
+                  >
                     {filteredMentionCandidates.length === 0 ? (
                       <div className="mention-empty">无匹配参与人员</div>
                     ) : (
