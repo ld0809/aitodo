@@ -19,6 +19,19 @@
   min-width: 0;
 }
 
+.hover-reveal {
+  display: none;
+}
+
+.header:hover .hover-reveal,
+.header:focus-within .hover-reveal {
+  display: flex;
+}
+
+.header:not(:hover):not(:focus-within) .header-left {
+  justify-content: center;
+}
+
 .logo2 {
   display: flex;
   align-items: center;
@@ -48,6 +61,7 @@
 .current-target {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex: 1;
   min-width: 0;
   padding: 8px 14px;
@@ -58,6 +72,7 @@
 
 .target-text {
   font-size: 16px;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -188,4 +203,13 @@
   .btn-sm.btn-sm-secondary {
     padding: 8px 12px;
   }
+}
+
+.header:not(:hover):not(:focus-within) .hover-reveal {
+  display: none !important;
+}
+
+.header:hover .hover-reveal,
+.header:focus-within .hover-reveal {
+  display: flex !important;
 }

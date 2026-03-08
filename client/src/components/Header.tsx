@@ -51,11 +51,11 @@ export function Header({
   return (
     <header className="header">
       <div className="header-left">
-        <div className="logo2">
+        <div className="logo2 hover-reveal">
           <div className="logo-icon-sm">✓</div>
           <span>AI待办</span>
         </div>
-        <nav className="nav">
+        <nav className="nav hover-reveal">
           <div className="nav-item active">看板</div>
           <div className="nav-item">日历</div>
           <div className="nav-item">统计</div>
@@ -66,9 +66,9 @@ export function Header({
           </span>
         </div>
       </div>
-      <div className="header-right">
-        <button className="btn-sm" onClick={onNewTodo}>+ 新建待办</button>
-        <button className="btn-sm" onClick={onNewCard}>+ 新建卡片</button>
+      <div className="header-right hover-reveal">
+        <button className="btn-sm btn-sm-secondary" onClick={onNewTodo}>+ 待办</button>
+        <button className="btn-sm btn-sm-secondary" onClick={onNewCard}>+ 卡片</button>
         <button className="btn-sm btn-sm-secondary" onClick={onOpenAiReport}>AI报告</button>
         <div className="user-dropdown" ref={menuRef}>
           <div
