@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1772525112534,
+  "lastScanned": 1772809456478,
   "projectRoot": "/Volumes/external/code/nodejs/todo_manager_openclaw_cc_mm",
   "techStack": {
     "languages": [],
@@ -35,7 +35,7 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 8,
-      "lastAccessed": 1772525112507,
+      "lastAccessed": 1772809456459,
       "keyFiles": [
         "jest-e2e.json",
         "nest-cli.json",
@@ -48,7 +48,7 @@
       "path": "client",
       "purpose": null,
       "fileCount": 13,
-      "lastAccessed": 1772525112507,
+      "lastAccessed": 1772809456459,
       "keyFiles": [
         "README.md",
         "e2e.spec.ts",
@@ -61,7 +61,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 3,
-      "lastAccessed": 1772525112508,
+      "lastAccessed": 1772809456460,
       "keyFiles": [
         "ARCHITECTURE.md",
         "PRD.md"
@@ -71,7 +71,7 @@
       "path": "backend/data",
       "purpose": "Data files",
       "fileCount": 2,
-      "lastAccessed": 1772525112509,
+      "lastAccessed": 1772809456460,
       "keyFiles": [
         "app.db",
         "todo_manager.db"
@@ -81,7 +81,7 @@
       "path": "backend/dist",
       "purpose": "Distribution/build output",
       "fileCount": 6,
-      "lastAccessed": 1772525112516,
+      "lastAccessed": 1772809456462,
       "keyFiles": [
         "app.module.js",
         "app.module.js.map",
@@ -92,24 +92,14 @@
       "path": "backend/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1772525112518,
+      "lastAccessed": 1772809456466,
       "keyFiles": []
-    },
-    "backend/src": {
-      "path": "backend/src",
-      "purpose": "Source code",
-      "fileCount": 2,
-      "lastAccessed": 1772525112519,
-      "keyFiles": [
-        "app.module.ts",
-        "main.ts"
-      ]
     },
     "client/dist": {
       "path": "client/dist",
       "purpose": "Distribution/build output",
       "fileCount": 2,
-      "lastAccessed": 1772525112519,
+      "lastAccessed": 1772809456467,
       "keyFiles": [
         "index.html",
         "vite.svg"
@@ -119,77 +109,10 @@
       "path": "client/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1772525112520,
+      "lastAccessed": 1772809456468,
       "keyFiles": []
     }
   },
-  "hotPaths": [
-    {
-      "path": "backend/src/plugins/adapters/tapd.service.ts",
-      "accessCount": 9,
-      "lastAccessed": 1772532721977,
-      "type": "file"
-    },
-    {
-      "path": "client/src/components/CardModal.tsx",
-      "accessCount": 6,
-      "lastAccessed": 1772530441224,
-      "type": "file"
-    },
-    {
-      "path": "client/src/api/tapd.ts",
-      "accessCount": 6,
-      "lastAccessed": 1772530445875,
-      "type": "file"
-    },
-    {
-      "path": "client/src/api/cards.ts",
-      "accessCount": 4,
-      "lastAccessed": 1772530361947,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/tapd/tapd.controller.ts",
-      "accessCount": 4,
-      "lastAccessed": 1772532705968,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/main.ts",
-      "accessCount": 2,
-      "lastAccessed": 1772530325901,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/cards/cards.controller.ts",
-      "accessCount": 2,
-      "lastAccessed": 1772530370586,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/cards/dto/create-card.dto.ts",
-      "accessCount": 2,
-      "lastAccessed": 1772530374780,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/cards/dto/update-card.dto.ts",
-      "accessCount": 2,
-      "lastAccessed": 1772530398002,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/tapd/tapd-config.service.ts",
-      "accessCount": 1,
-      "lastAccessed": 1772530228914,
-      "type": "file"
-    },
-    {
-      "path": "backend/src/cards/cards.service.ts",
-      "accessCount": 1,
-      "lastAccessed": 1772530374832,
-      "type": "file"
-    }
-  ],
+  "hotPaths": [],
   "userDirectives": []
 }
