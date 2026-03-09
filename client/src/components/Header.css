@@ -20,16 +20,15 @@
 }
 
 .hover-reveal {
-  display: none;
-}
-
-.header:hover .hover-reveal,
-.header:focus-within .hover-reveal {
-  display: flex;
-}
-
-.header:not(:hover):not(:focus-within) .header-left {
-  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s ease,
+    visibility 0s linear 0.22s;
+  will-change: opacity, transform;
 }
 
 .logo2 {
@@ -205,11 +204,11 @@
   }
 }
 
-.header:not(:hover):not(:focus-within) .hover-reveal {
-  display: none !important;
-}
-
 .header:hover .hover-reveal,
 .header:focus-within .hover-reveal {
-  display: flex !important;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-delay: 0s;
 }
