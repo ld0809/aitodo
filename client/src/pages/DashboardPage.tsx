@@ -616,7 +616,10 @@ export function DashboardPage() {
           tags={tags}
           mentionCandidates={activeTodoCard?.participants ?? []}
           onSave={handleSaveTodo}
-          onCreateTag={(name, color) => createTagMutation.mutate({ name, color })}
+          onCreateTag={async (name, color) => {
+            const res = await createTagMutation.mutateAsync({ name, color });
+            return res.data;
+          }}
           defaultTagIds={defaultTagIds}
           onClose={() => {
             setShowTodoModal(false);
@@ -632,7 +635,10 @@ export function DashboardPage() {
           cards={cards}
           tags={tags}
           onSave={handleSaveCard}
-          onCreateTag={(name, color) => createTagMutation.mutate({ name, color })}
+          onCreateTag={async (name, color) => {
+            const res = await createTagMutation.mutateAsync({ name, color });
+            return res.data;
+          }}
           onClose={() => {
             setShowCardModal(false);
             setEditingCard(null);

@@ -11,7 +11,7 @@ interface CardModalProps {
   cards: Card[];
   tags: Tag[];
   onSave: (data: CreateCardDto | UpdateCardDto) => void;
-  onCreateTag: (name: string, color: string) => void;
+  onCreateTag: (name: string, color: string) => Promise<Tag | void>;
   onClose: () => void;
 }
 
@@ -188,9 +188,16 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
     setParticipantEmails(copiedEmails);
   };
 
-  const handleCreateTag = () => {
+  const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
-    onCreateTag(newTagName.trim(), '#3b82f6');
+    try {
+      const createdTag = await onCreateTag(newTagName.trim(), '#3b82f6');
+      if (createdTag?.id) {
+        setSelectedTagIds((prev) => (prev.includes(createdTag.id) ? prev : [...prev, createdTag.id]));
+      }
+    } catch {
+      alert('创建标签失败，请稍后重试');
+    }
     setNewTagName('');
   };
 
@@ -410,7 +417,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleCreateTag();
+                      void handleCreateTag();
                     }
                   }}
                   style={{ flex: 1, padding: '8px 12px' }}
