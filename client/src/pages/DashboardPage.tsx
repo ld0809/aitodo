@@ -73,14 +73,18 @@ function intersectsVertically(left: GridLayoutItem, right: GridLayoutItem): bool
   return left.y < right.y + right.h && right.y < left.y + left.h;
 }
 
-function resolveLayoutOverlaps(layout: readonly GridLayoutItem[]): GridLayoutItem[] {
+function resolveLayoutOverlaps(
+  layout: readonly GridLayoutItem[],
+  options?: { compactUp?: boolean },
+): GridLayoutItem[] {
+  const compactUp = options?.compactUp ?? false;
   const sorted = [...layout]
     .map((item) => ({ ...item }))
     .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
   const placed: GridLayoutItem[] = [];
 
   for (const item of sorted) {
-    let nextY = Math.max(0, item.y);
+    let nextY = compactUp ? 0 : Math.max(0, item.y);
     while (true) {
       const probe = { ...item, y: nextY };
       const collisions = placed.filter(
@@ -525,7 +529,10 @@ export function DashboardPage() {
     updateProfileMutation.mutate({ nickname: nextNickname });
   };
 
-  const applyResolvedLayout = (layout: readonly GridLayoutItem[]) => {
+  const applyResolvedLayout = (
+    layout: readonly GridLayoutItem[],
+    options?: { compactUp?: boolean },
+  ) => {
     const cardMap = new Map((Array.isArray(cards) ? cards : []).map((card: Card) => [card.id, card]));
     const normalizedLayout = layout
       .filter((item): item is GridLayoutItem => typeof item.i === 'string')
@@ -537,7 +544,7 @@ export function DashboardPage() {
         h: Math.max(CARD_MIN_H, Math.round(item.h)),
       }))
       .filter((item) => cardMap.has(item.i));
-    const resolvedLayout = resolveLayoutOverlaps(normalizedLayout);
+    const resolvedLayout = resolveLayoutOverlaps(normalizedLayout, options);
 
     const changedLayouts = resolvedLayout.filter((item) => {
       const card = cardMap.get(item.i);
@@ -581,7 +588,7 @@ export function DashboardPage() {
   };
 
   const handleResizeStop = (layout: readonly GridLayoutItem[]) => {
-    applyResolvedLayout(layout);
+    applyResolvedLayout(layout, { compactUp: true });
   };
 
   const getTodosForCard = (card: Card) => {

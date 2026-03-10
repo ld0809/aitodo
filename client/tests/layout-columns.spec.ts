@@ -307,3 +307,97 @@ test('resizing a card should push down overlapped cards below it', async ({ page
   await expect.poll(() => patchedCards.has('layout-card-top')).toBeTruthy();
   await expect.poll(() => patchedCards.has('layout-card-bottom')).toBeTruthy();
 });
+
+test('shrinking a card should pull up related cards below it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  const now = new Date().toISOString();
+  const cards = [
+    {
+      id: 'layout-card-top-shrink',
+      userId: 'layout-owner',
+      name: '上方卡片-缩小',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 5,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'layout-card-bottom-shrink',
+      userId: 'layout-owner',
+      name: '下方卡片-跟随上移',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 5,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  const patchedPayloadByCard = new Map<string, Record<string, unknown>>();
+  await mockDashboardApis(page, cards, now, (cardId, payload) => {
+    if (cardId) {
+      patchedPayloadByCard.set(cardId, payload);
+    }
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  const topCard = page.locator('.react-grid-item').filter({ hasText: '上方卡片-缩小' }).first();
+  const bottomCard = page.locator('.react-grid-item').filter({ hasText: '下方卡片-跟随上移' }).first();
+  await topCard.waitFor();
+  await bottomCard.waitFor();
+
+  const topBefore = await topCard.boundingBox();
+  const bottomBefore = await bottomCard.boundingBox();
+  expect(topBefore).not.toBeNull();
+  expect(bottomBefore).not.toBeNull();
+  if (!topBefore || !bottomBefore) return;
+
+  const dragX = topBefore.x + topBefore.width / 2;
+  const dragY = topBefore.y + topBefore.height - 4;
+
+  await page.mouse.move(dragX, dragY);
+  await page.mouse.down();
+  await page.mouse.move(dragX, dragY - 200, { steps: 10 });
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const currentTop = await topCard.boundingBox();
+    return currentTop?.height ?? topBefore.height;
+  }).toBeLessThan(topBefore.height - 40);
+
+  await expect.poll(async () => {
+    const currentBottom = await bottomCard.boundingBox();
+    return currentBottom?.y ?? bottomBefore.y;
+  }).toBeLessThan(bottomBefore.y - 40);
+
+  await expect.poll(async () => {
+    const currentTop = await topCard.boundingBox();
+    const currentBottom = await bottomCard.boundingBox();
+    if (!currentTop || !currentBottom) return -1;
+    return currentBottom.y - (currentTop.y + currentTop.height);
+  }).toBeGreaterThanOrEqual(-1);
+
+  await expect.poll(() => patchedPayloadByCard.has('layout-card-top-shrink')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('layout-card-bottom-shrink')).toBeTruthy();
+  expect(Number(patchedPayloadByCard.get('layout-card-bottom-shrink')?.y)).toBeLessThan(5);
+});
