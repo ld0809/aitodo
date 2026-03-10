@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1772809456478,
+  "lastScanned": 1773106090295,
   "projectRoot": "/Volumes/external/code/nodejs/todo_manager_openclaw_cc_mm",
   "techStack": {
     "languages": [],
@@ -35,7 +35,7 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 8,
-      "lastAccessed": 1772809456459,
+      "lastAccessed": 1773106090275,
       "keyFiles": [
         "jest-e2e.json",
         "nest-cli.json",
@@ -48,7 +48,7 @@
       "path": "client",
       "purpose": null,
       "fileCount": 13,
-      "lastAccessed": 1772809456459,
+      "lastAccessed": 1773106090275,
       "keyFiles": [
         "README.md",
         "e2e.spec.ts",
@@ -60,10 +60,12 @@
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 3,
-      "lastAccessed": 1772809456460,
+      "fileCount": 5,
+      "lastAccessed": 1773106090276,
       "keyFiles": [
         "ARCHITECTURE.md",
+        "DB_BACKUP_STRATEGY.md",
+        "PHASE3_AI_REPORT.md",
         "PRD.md"
       ]
     },
@@ -71,7 +73,7 @@
       "path": "backend/data",
       "purpose": "Data files",
       "fileCount": 2,
-      "lastAccessed": 1772809456460,
+      "lastAccessed": 1773106090277,
       "keyFiles": [
         "app.db",
         "todo_manager.db"
@@ -81,7 +83,7 @@
       "path": "backend/dist",
       "purpose": "Distribution/build output",
       "fileCount": 6,
-      "lastAccessed": 1772809456462,
+      "lastAccessed": 1773106090277,
       "keyFiles": [
         "app.module.js",
         "app.module.js.map",
@@ -92,14 +94,14 @@
       "path": "backend/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1772809456466,
+      "lastAccessed": 1773106090280,
       "keyFiles": []
     },
     "client/dist": {
       "path": "client/dist",
       "purpose": "Distribution/build output",
       "fileCount": 2,
-      "lastAccessed": 1772809456467,
+      "lastAccessed": 1773106090280,
       "keyFiles": [
         "index.html",
         "vite.svg"
@@ -109,7 +111,7 @@
       "path": "client/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1772809456468,
+      "lastAccessed": 1773106090281,
       "keyFiles": []
     }
   },

@@ -67,7 +67,8 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
 
       if (card.pluginType === 'tapd' && card.pluginConfigJson) {
         try {
-          const config = JSON.parse(card.pluginConfigJson) as {
+          const rawConfig = typeof card.pluginConfigJson === 'string' ? JSON.parse(card.pluginConfigJson) : card.pluginConfigJson;
+          const config = rawConfig as {
             workspaceId?: string;
             contentType?: 'all' | 'requirements' | 'bugs';
             iterationId?: string;
@@ -78,6 +79,9 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
           setIterationId(config.iterationId || '');
           setOwnerIds(Array.isArray(config.ownerIds) ? config.ownerIds : []);
         } catch {
+          setWorkspaceId('');
+          setContentType('all');
+          setIterationId('');
           setOwnerIds([]);
         }
       } else {
@@ -108,10 +112,6 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
 
   useEffect(() => {
     if (!isTapdCard) {
-      setWorkspaceId('');
-      setContentType('all');
-      setIterationId('');
-      setOwnerIds([]);
       setTapdUsers([]);
       return;
     }
