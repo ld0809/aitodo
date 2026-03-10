@@ -78,6 +78,12 @@ function intersectsVertically(left: GridLayoutItem, right: GridLayoutItem): bool
   return left.y < right.y + right.h && right.y < left.y + left.h;
 }
 
+function calculateOverlapArea(left: GridLayoutItem, right: GridLayoutItem): number {
+  const overlapX = Math.max(0, Math.min(left.x + left.w, right.x + right.w) - Math.max(left.x, right.x));
+  const overlapY = Math.max(0, Math.min(left.y + left.h, right.y + right.h) - Math.max(left.y, right.y));
+  return overlapX * overlapY;
+}
+
 function resolveLayoutOverlaps(
   layout: readonly GridLayoutItem[],
   options?: { compactUp?: boolean; pinItemId?: string; frozenItemIds?: readonly string[] },
@@ -622,22 +628,33 @@ export function DashboardPage() {
       }));
     const draggedItem = normalizedLayout.find((item) => item.i === newItem.i);
     if (!draggedItem) return;
-    const hasTargetCollision = normalizedLayout.some(
-      (item) =>
-        item.i !== draggedItem.i &&
-        intersectsHorizontally(item, draggedItem) &&
-        intersectsVertically(item, draggedItem),
-    );
+    const targetCollisions = normalizedLayout
+      .filter(
+        (item) =>
+          item.i !== draggedItem.i &&
+          intersectsHorizontally(item, draggedItem) &&
+          intersectsVertically(item, draggedItem),
+      )
+      .map((item) => ({
+        item,
+        overlapArea: calculateOverlapArea(item, draggedItem),
+      }))
+      .filter((entry) => entry.overlapArea > 0)
+      .sort((left, right) =>
+        right.overlapArea - left.overlapArea || left.item.y - right.item.y || left.item.x - right.item.x,
+      );
+    const selectedTarget = targetCollisions[0]?.item;
 
-    if (!hasTargetCollision) {
-      const fallbackOldItem = cards.find((card: Card) => card.id === draggedItem.i);
-      const sourceAnchor: GridLayoutItem = {
-        i: draggedItem.i,
-        x: Math.max(0, Math.round(oldItem?.x ?? fallbackOldItem?.x ?? draggedItem.x)),
-        y: Math.max(0, Math.round(oldItem?.y ?? fallbackOldItem?.y ?? draggedItem.y)),
-        w: Math.max(2, Math.min(gridCols, Math.round(oldItem?.w ?? fallbackOldItem?.w ?? draggedItem.w))),
-        h: Math.max(CARD_MIN_H, Math.round(oldItem?.h ?? fallbackOldItem?.h ?? draggedItem.h)),
-      };
+    const fallbackOldItem = cards.find((card: Card) => card.id === draggedItem.i);
+    const sourceAnchor: GridLayoutItem = {
+      i: draggedItem.i,
+      x: Math.max(0, Math.round(oldItem?.x ?? fallbackOldItem?.x ?? draggedItem.x)),
+      y: Math.max(0, Math.round(oldItem?.y ?? fallbackOldItem?.y ?? draggedItem.y)),
+      w: Math.max(2, Math.min(gridCols, Math.round(oldItem?.w ?? fallbackOldItem?.w ?? draggedItem.w))),
+      h: Math.max(CARD_MIN_H, Math.round(oldItem?.h ?? fallbackOldItem?.h ?? draggedItem.h)),
+    };
+
+    if (!selectedTarget) {
       const sourceMinY = sourceAnchor.y + sourceAnchor.h;
       const sourceFollowerIds = normalizedLayout
         .filter(
@@ -664,9 +681,30 @@ export function DashboardPage() {
       return;
     }
 
-    applyResolvedLayout(layout, {
-      compactUp: true,
-      pinItemId: newItem.i,
+    const swappedLayout = normalizedLayout.map((item) => {
+      if (item.i === draggedItem.i) {
+        return {
+          ...item,
+          x: selectedTarget.x,
+          y: selectedTarget.y,
+        };
+      }
+      if (item.i === selectedTarget.i) {
+        return {
+          ...item,
+          x: Math.max(0, Math.min(sourceAnchor.x, Math.max(0, gridCols - item.w))),
+          y: sourceAnchor.y,
+        };
+      }
+      return item;
+    });
+    const frozenItemIds = swappedLayout
+      .filter((item) => item.i !== draggedItem.i && item.i !== selectedTarget.i)
+      .map((item) => item.i);
+
+    applyResolvedLayout(swappedLayout, {
+      pinItemId: draggedItem.i,
+      frozenItemIds,
     });
   };
 

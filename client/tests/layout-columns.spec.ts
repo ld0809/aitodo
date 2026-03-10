@@ -548,33 +548,15 @@ test('dragging to blank area should only pull cards up in vacated source area', 
   expect(Number(patchedPayloadByCard.get('drag-follow-up-card')?.y)).toBeLessThan(3);
 });
 
-test('dragging onto occupied position should push occupied card and cards below downward', async ({ page }) => {
+test('when dragging overlap hits multiple cards, should choose max-overlap one and only affect that card', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 
   const now = new Date().toISOString();
   const cards = [
     {
-      id: 'drag-top-card',
+      id: 'drag-source-card-multi-target',
       userId: 'layout-owner',
-      name: '顶部卡片',
-      cardType: 'personal',
-      sortBy: 'due_at',
-      sortOrder: 'asc',
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 3,
-      pluginType: 'local_todo',
-      pluginConfigJson: null,
-      tags: [],
-      participants: [],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'drag-middle-card',
-      userId: 'layout-owner',
-      name: '被占用卡片',
+      name: '拖拽源卡片-多目标',
       cardType: 'personal',
       sortBy: 'due_at',
       sortOrder: 'asc',
@@ -590,14 +572,32 @@ test('dragging onto occupied position should push occupied card and cards below 
       updatedAt: now,
     },
     {
-      id: 'drag-bottom-card',
+      id: 'drag-target-left',
       userId: 'layout-owner',
-      name: '被占用下方卡片',
+      name: '候选卡片-左',
       cardType: 'personal',
       sortBy: 'due_at',
       sortOrder: 'asc',
-      x: 0,
-      y: 6,
+      x: 4,
+      y: 0,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'drag-target-right',
+      userId: 'layout-owner',
+      name: '候选卡片-右',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 8,
+      y: 0,
       w: 4,
       h: 3,
       pluginType: 'local_todo',
@@ -617,27 +617,37 @@ test('dragging onto occupied position should push occupied card and cards below 
   await page.addInitScript(injectAuthStorage());
   await page.goto(`${BASE_URL}/dashboard`);
 
-  const topCard = page.locator('.react-grid-item').filter({ hasText: '顶部卡片' }).first();
-  await topCard.waitFor();
+  const sourceCard = page.locator('.react-grid-item').filter({ hasText: '拖拽源卡片-多目标' }).first();
+  const targetLeftCard = page.locator('.react-grid-item').filter({ hasText: '候选卡片-左' }).first();
+  const targetRightCard = page.locator('.react-grid-item').filter({ hasText: '候选卡片-右' }).first();
+  await sourceCard.waitFor();
+  await targetLeftCard.waitFor();
+  await targetRightCard.waitFor();
 
-  const topBefore = await topCard.boundingBox();
-  expect(topBefore).not.toBeNull();
-  if (!topBefore) return;
+  const sourceBefore = await sourceCard.boundingBox();
+  const targetLeftBefore = await targetLeftCard.boundingBox();
+  expect(sourceBefore).not.toBeNull();
+  expect(targetLeftBefore).not.toBeNull();
+  if (!sourceBefore || !targetLeftBefore) return;
 
-  const startX = topBefore.x + topBefore.width / 2;
-  const startY = topBefore.y + 24;
-  const targetY = startY + 520;
+  const startX = sourceBefore.x + sourceBefore.width / 2;
+  const startY = sourceBefore.y + 24;
+  const desiredLeft = targetLeftBefore.x + targetLeftBefore.width * 0.75;
+  const targetX = desiredLeft + sourceBefore.width / 2;
+  const targetY = targetLeftBefore.y + 24;
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX, targetY, { steps: 10 });
+  await page.mouse.move(targetX, targetY, { steps: 10 });
   await page.mouse.up();
 
-  await expect.poll(() => patchedPayloadByCard.has('drag-top-card')).toBeTruthy();
-  await expect.poll(() => patchedPayloadByCard.has('drag-middle-card')).toBeTruthy();
-  await expect.poll(() => patchedPayloadByCard.has('drag-bottom-card')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('drag-source-card-multi-target')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('drag-target-right')).toBeTruthy();
+  expect(patchedPayloadByCard.has('drag-target-left')).toBeFalsy();
+  expect(patchedPayloadByCard.size).toBe(2);
 
-  expect(Number(patchedPayloadByCard.get('drag-top-card')?.y)).toBeGreaterThan(0);
-  expect(Number(patchedPayloadByCard.get('drag-middle-card')?.y)).toBeGreaterThan(3);
-  expect(Number(patchedPayloadByCard.get('drag-bottom-card')?.y)).toBeGreaterThan(6);
+  expect(Number(patchedPayloadByCard.get('drag-source-card-multi-target')?.x)).toBe(8);
+  expect(Number(patchedPayloadByCard.get('drag-source-card-multi-target')?.y)).toBe(0);
+  expect(Number(patchedPayloadByCard.get('drag-target-right')?.x)).toBe(0);
+  expect(Number(patchedPayloadByCard.get('drag-target-right')?.y)).toBe(3);
 });
