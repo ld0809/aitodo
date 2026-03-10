@@ -802,6 +802,7 @@ export function DashboardPage() {
                 const visibleCardTodos = showCompleted
                   ? sortedCardTodos
                   : sortedCardTodos.filter((todo) => !isCompletedTodo(todo));
+                const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
                 const isCardOwner = card.userId === user?.id;
                 const isTapdCard = card.pluginType === 'tapd';
                 return (
@@ -842,6 +843,7 @@ export function DashboardPage() {
                       key={todo.id}
                       todo={todo}
                       tags={tags}
+                      hiddenTagIds={cardTagIds}
                       onToggle={() => handleToggleTodo(todo.id, todo.status)}
                       showToggle={card.pluginType !== 'tapd'}
                       onEdit={() => {

@@ -144,10 +144,22 @@
   color: var(--txt3);
 }
 
-.time.warn {
-  color: var(--warn);
+.time.due-depth-1 {
+  color: #fca5a5;
 }
 
-.time.danger {
-  color: var(--danger);
+.time.due-depth-2 {
+  color: #f87171;
+}
+
+.time.due-depth-3 {
+  color: #ef4444;
+}
+
+.time.due-depth-4 {
+  color: #dc2626;
+}
+
+.time.due-depth-overdue {
+  color: #991b1b;
 }

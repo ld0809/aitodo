@@ -10,6 +10,7 @@ interface TodoCardProps {
   showToggle?: boolean;
   canUpdateProgress?: boolean;
   onOpenProgress?: () => void;
+  hiddenTagIds?: string[];
 }
 
 export function TodoCard({
@@ -19,27 +20,50 @@ export function TodoCard({
   showToggle = true,
   canUpdateProgress = false,
   onOpenProgress,
+  hiddenTagIds = [],
 }: TodoCardProps) {
   const isDone = todo.status === 'done' || todo.status === 'completed';
+  const hiddenTagIdSet = new Set(hiddenTagIds);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
     const date = new Date(dateStr);
     const now = new Date();
     const diff = date.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 0) {
-      return { text: '已过期', className: 'danger' };
+    const DAY_MS = 1000 * 60 * 60 * 24;
+    const remainingDays = diff / DAY_MS;
+
+    if (diff < 0) {
+      return { text: '已过期', className: 'due-depth-overdue' };
     }
-    if (hours < 24) {
-      return { text: `⏰ ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`, className: 'warn' };
+
+    let className = 'due-depth-4';
+    if (remainingDays > 5) {
+      className = 'due-depth-1';
+    } else if (remainingDays > 3) {
+      className = 'due-depth-2';
+    } else if (remainingDays > 1) {
+      className = 'due-depth-3';
     }
-    return { text: `📅 ${date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}`, className: '' };
+
+    if (remainingDays <= 1) {
+      return {
+        text: `⏰ ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+        className,
+      };
+    }
+
+    return {
+      text: `📅 ${date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}`,
+      className,
+    };
   };
 
   const dueInfo = formatDate(todo.dueAt);
   const isCompleted = todo.status === 'completed';
+  const visibleTags = (Array.isArray(todo.tags) ? todo.tags : []).filter(
+    (tag) => !hiddenTagIdSet.has(tag.id),
+  );
 
   return (
     <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
@@ -83,7 +107,7 @@ export function TodoCard({
             {todo.content}
           </div>
           <div className="todo-meta">
-            {(Array.isArray(todo.tags) ? todo.tags : []).map((tag) => (
+            {visibleTags.map((tag) => (
               <span key={tag.id} className={`tag ${getTagClass(tag.name)}`}>
                 {tag.name}
               </span>
