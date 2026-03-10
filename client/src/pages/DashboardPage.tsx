@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import GridLayout from 'react-grid-layout';
+import GridLayout, { noCompactor } from 'react-grid-layout';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
@@ -65,6 +65,39 @@ interface GridLayoutItem {
   h: number;
 }
 
+function intersectsHorizontally(left: GridLayoutItem, right: GridLayoutItem): boolean {
+  return left.x < right.x + right.w && right.x < left.x + left.w;
+}
+
+function intersectsVertically(left: GridLayoutItem, right: GridLayoutItem): boolean {
+  return left.y < right.y + right.h && right.y < left.y + left.h;
+}
+
+function resolveLayoutOverlaps(layout: readonly GridLayoutItem[]): GridLayoutItem[] {
+  const sorted = [...layout]
+    .map((item) => ({ ...item }))
+    .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+  const placed: GridLayoutItem[] = [];
+
+  for (const item of sorted) {
+    let nextY = Math.max(0, item.y);
+    while (true) {
+      const probe = { ...item, y: nextY };
+      const collisions = placed.filter(
+        (placedItem) =>
+          intersectsHorizontally(probe, placedItem) && intersectsVertically(probe, placedItem),
+      );
+      if (collisions.length === 0) {
+        break;
+      }
+      nextY = Math.max(...collisions.map((collision) => collision.y + collision.h));
+    }
+    placed.push({ ...item, y: nextY });
+  }
+
+  return placed;
+}
+
 const GridLayoutComponent = GridLayout as unknown as ComponentType<Record<string, unknown>>;
 
 export function DashboardPage() {
@@ -96,6 +129,7 @@ export function DashboardPage() {
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const [showCompletedByCard, setShowCompletedByCard] = useState<Record<string, boolean>>({});
   const CARD_H = 3;
+  const CARD_MIN_H = 2;
   const CARD_W = 4;
   const BASE_CARD_WIDTH = 380;
   const GRID_ROW_HEIGHT = 150;
@@ -296,14 +330,6 @@ export function DashboardPage() {
     },
   });
 
-  const updateCardLayoutMutation = useMutation({
-    mutationFn: ({ id, layout }: { id: string; layout: { i: string; x: number; y: number; w: number; h: number } }) =>
-      cardsApi.updateLayout(id, { x: layout.x, y: layout.y, w: layout.w, h: layout.h }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
-    },
-  });
-
   const createTagMutation = useMutation({
     mutationFn: (data: CreateTagDto) => tagsApi.create(data),
     onSuccess: () => {
@@ -499,26 +525,63 @@ export function DashboardPage() {
     updateProfileMutation.mutate({ nickname: nextNickname });
   };
 
-  const handleDragStop = (
-    _layout: readonly GridLayoutItem[],
-    _oldItem: GridLayoutItem | null,
-    newItem: GridLayoutItem | null,
-  ) => {
-    if (!newItem) return;
-    const card = cards.find((c: Card) => c.id === newItem.i);
-    if (!card) return;
-    if (card.x === newItem.x && card.y === newItem.y) return;
+  const applyResolvedLayout = (layout: readonly GridLayoutItem[]) => {
+    const cardMap = new Map((Array.isArray(cards) ? cards : []).map((card: Card) => [card.id, card]));
+    const normalizedLayout = layout
+      .filter((item): item is GridLayoutItem => typeof item.i === 'string')
+      .map((item) => ({
+        i: item.i,
+        x: Math.max(0, Math.round(item.x)),
+        y: Math.max(0, Math.round(item.y)),
+        w: Math.max(2, Math.min(gridCols, Math.round(item.w))),
+        h: Math.max(CARD_MIN_H, Math.round(item.h)),
+      }))
+      .filter((item) => cardMap.has(item.i));
+    const resolvedLayout = resolveLayoutOverlaps(normalizedLayout);
 
-    updateCardLayoutMutation.mutate({
-      id: newItem.i,
-      layout: {
-        i: newItem.i,
-        x: newItem.x,
-        y: newItem.y,
-        w: card.w || CARD_W,
-        h: CARD_H,
-      },
+    const changedLayouts = resolvedLayout.filter((item) => {
+      const card = cardMap.get(item.i);
+      if (!card) return false;
+      const currentX = card.x ?? 0;
+      const currentY = card.y ?? 0;
+      const currentW = card.w || CARD_W;
+      const currentH = card.h || CARD_H;
+      return currentX !== item.x || currentY !== item.y || currentW !== item.w || currentH !== item.h;
     });
+
+    if (changedLayouts.length === 0) return;
+
+    const changedMap = new Map(changedLayouts.map((item) => [item.i, item]));
+    queryClient.setQueryData(['cards'], (previous: Card[] | undefined) => {
+      if (!Array.isArray(previous)) return previous;
+      return previous.map((card) => {
+        const next = changedMap.get(card.id);
+        if (!next) return card;
+        return {
+          ...card,
+          x: next.x,
+          y: next.y,
+          w: next.w,
+          h: next.h,
+        };
+      });
+    });
+
+    void Promise.all(
+      changedLayouts.map((item) =>
+        cardsApi.updateLayout(item.i, { x: item.x, y: item.y, w: item.w, h: item.h }),
+      ),
+    ).finally(() => {
+      queryClient.invalidateQueries({ queryKey: ['cards'] });
+    });
+  };
+
+  const handleDragStop = (layout: readonly GridLayoutItem[]) => {
+    applyResolvedLayout(layout);
+  };
+
+  const handleResizeStop = (layout: readonly GridLayoutItem[]) => {
+    applyResolvedLayout(layout);
   };
 
   const getTodosForCard = (card: Card) => {
@@ -535,40 +598,20 @@ export function DashboardPage() {
   const isCompletedTodo = (todo: Todo) => todo.status === 'done' || todo.status === 'completed';
 
   const gridLayout = useMemo(() => {
-    const orderedCards = [...(Array.isArray(cards) ? cards : [])].sort((a, b) =>
-      a.y === b.y ? a.x - b.x : a.y - b.y
-    );
-
-    return orderedCards.reduce<Array<{
-      i: string;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-      minW: number;
-      minH: number;
-      maxH: number;
-    }>>((items, card) => {
-      const last = items[items.length - 1];
-      const nextXBase = last ? last.x + last.w : 0;
-      const nextYBase = last ? last.y : 0;
-      const normalizedW = Math.min(card.w || CARD_W, gridCols);
-      const wraps = nextXBase + normalizedW > gridCols;
-      const x = wraps ? 0 : nextXBase;
-      const y = wraps ? nextYBase + CARD_H : nextYBase;
-
-      items.push({
-        i: card.id,
-        x,
-        y,
-        w: normalizedW,
-        h: CARD_H,
-        minW: 2,
-        minH: CARD_H,
-        maxH: CARD_H,
+    const baseLayout = (Array.isArray(cards) ? cards : []).map((card: Card) => {
+        const normalizedW = Math.min(card.w || CARD_W, gridCols);
+        const normalizedX = Math.min(card.x || 0, Math.max(0, gridCols - normalizedW));
+        return {
+          i: card.id,
+          x: normalizedX,
+          y: Math.max(0, card.y || 0),
+          w: normalizedW,
+          h: Math.max(CARD_MIN_H, card.h || CARD_H),
+          minW: 2,
+          minH: CARD_MIN_H,
+        };
       });
-      return items;
-    }, []);
+    return resolveLayoutOverlaps(baseLayout);
   }, [cards, gridCols]);
 
   if (todosLoading || cardsLoading) {
@@ -608,14 +651,17 @@ export function DashboardPage() {
             rowHeight: GRID_ROW_HEIGHT,
             margin: GRID_MARGIN,
           }}
+          compactor={noCompactor}
           dragConfig={{
             handle: '.card-header',
             cancel: '.card-actions, .card-actions button',
           }}
           resizeConfig={{
-            enabled: false,
+            enabled: true,
+            handles: ['s'],
           }}
           onDragStop={handleDragStop}
+          onResizeStop={handleResizeStop}
         >
           {(Array.isArray(cards) ? cards : []).map((card: Card) => (
             <div key={card.id} className="grid-card-inner">

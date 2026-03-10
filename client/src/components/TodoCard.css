@@ -1,7 +1,7 @@
 .todo-item {
-  padding: 12px;
+  padding: 8px 10px;
   border-radius: var(--r2);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   background: var(--bg);
   cursor: pointer;
   transition: 0.2s;
@@ -23,7 +23,7 @@
 
 .todo-row {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: flex-start;
 }
 
@@ -84,7 +84,7 @@
 
 .todo-text {
   font-size: 14px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -103,7 +103,7 @@
 .todo-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
