@@ -7,11 +7,19 @@ interface TodoCardProps {
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  showToggle?: boolean;
   canUpdateProgress?: boolean;
   onOpenProgress?: () => void;
 }
 
-export function TodoCard({ todo, onToggle, onEdit, canUpdateProgress = false, onOpenProgress }: TodoCardProps) {
+export function TodoCard({
+  todo,
+  onToggle,
+  onEdit,
+  showToggle = true,
+  canUpdateProgress = false,
+  onOpenProgress,
+}: TodoCardProps) {
   const isDone = todo.status === 'done' || todo.status === 'completed';
 
   const formatDate = (dateStr?: string) => {
@@ -42,30 +50,34 @@ export function TodoCard({ todo, onToggle, onEdit, canUpdateProgress = false, on
       }
     }}>
       <div className="todo-row">
-        <div className="todo-left">
-          <div
-            className={`checkbox ${isDone ? 'checked' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-          >
-            {isDone && '✓'}
+        {(showToggle || canUpdateProgress) && (
+          <div className="todo-left">
+            {showToggle && (
+              <div
+                className={`checkbox ${isDone ? 'checked' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+              >
+                {isDone && '✓'}
+              </div>
+            )}
+            {canUpdateProgress && (
+              <button
+                type="button"
+                className="progress-entry-btn"
+                title="更新进度"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenProgress?.();
+                }}
+              >
+                {todo.progressCount ?? 0}
+              </button>
+            )}
           </div>
-          {canUpdateProgress && (
-            <button
-              type="button"
-              className="progress-entry-btn"
-              title="更新进度"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenProgress?.();
-              }}
-            >
-              {todo.progressCount ?? 0}
-            </button>
-          )}
-        </div>
+        )}
         <div className="todo-content">
           <div className={`todo-text ${isDone ? 'done' : ''}`}>
             {todo.content}

@@ -105,6 +105,15 @@
   color: var(--txt);
 }
 
+.card-actions .toggle-completed-btn {
+  font-size: 13px;
+  color: var(--txt2);
+}
+
+.card-actions .toggle-completed-btn.active {
+  color: var(--success);
+}
+
 .card-body {
   flex: 1;
   padding: 12px;

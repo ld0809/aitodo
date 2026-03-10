@@ -94,6 +94,7 @@ export function DashboardPage() {
   const [aiReportResult, setAiReportResult] = useState<AiReportResult | null>(null);
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
+  const [showCompletedByCard, setShowCompletedByCard] = useState<Record<string, boolean>>({});
   const CARD_H = 3;
   const CARD_W = 4;
   const BASE_CARD_WIDTH = 380;
@@ -149,7 +150,6 @@ export function DashboardPage() {
     queryKey: ['cards'],
     queryFn: () => cardsApi.getAll().then((res) => res.data),
   });
-
 
   const remoteCardsKey = (Array.isArray(cards) ? cards : [])
     .filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared')
@@ -470,6 +470,13 @@ export function DashboardPage() {
     setPendingDeleteCardId(id);
   };
 
+  const handleToggleCompletedVisibility = (cardId: string) => {
+    setShowCompletedByCard((prev) => ({
+      ...prev,
+      [cardId]: !(prev[cardId] ?? true),
+    }));
+  };
+
   const confirmDeleteCard = () => {
     if (!pendingDeleteCardId) return;
     deleteCardMutation.mutate(pendingDeleteCardId);
@@ -524,6 +531,8 @@ export function DashboardPage() {
       (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.includes(tag.id))
     );
   };
+
+  const isCompletedTodo = (todo: Todo) => todo.status === 'done' || todo.status === 'completed';
 
   const gridLayout = useMemo(() => {
     const orderedCards = [...(Array.isArray(cards) ? cards : [])].sort((a, b) =>
@@ -612,16 +621,37 @@ export function DashboardPage() {
             <div key={card.id} className="grid-card-inner">
               {(() => {
                 const cardTodos = getTodosForCard(card);
+                const sortedCardTodos = [...(Array.isArray(cardTodos) ? cardTodos : [])].sort(
+                  (left, right) => Number(isCompletedTodo(left)) - Number(isCompletedTodo(right)),
+                );
+                const showCompleted = showCompletedByCard[card.id] ?? true;
+                const visibleCardTodos = showCompleted
+                  ? sortedCardTodos
+                  : sortedCardTodos.filter((todo) => !isCompletedTodo(todo));
                 const isCardOwner = card.userId === user?.id;
+                const isTapdCard = card.pluginType === 'tapd';
                 return (
               <div className="card">
                 <div className="card-header">
                   <div className="card-title">
                     {card.name}{card.cardType === 'shared' ? ' · 共享' : ''}
-                    <span className="count">{cardTodos.length}</span>
+                    <span className="count">{visibleCardTodos.length}</span>
                   </div>
                   <div className="card-actions">
-                    {isCardOwner && (
+                    {!isTapdCard && (
+                      <button
+                        className={`toggle-completed-btn ${showCompleted ? 'active' : ''}`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleCompletedVisibility(card.id);
+                        }}
+                        title={showCompleted ? '隐藏已完成待办' : '显示已完成待办'}
+                      >
+                        {showCompleted ? '☑' : '☐'}
+                      </button>
+                    )}
+                    {isCardOwner && !isTapdCard && (
                       <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
                     )}
                     {isCardOwner && (
@@ -633,12 +663,13 @@ export function DashboardPage() {
                   </div>
                 </div>
                 <div className="card-body">
-                  {(Array.isArray(cardTodos) ? cardTodos : []).map((todo: Todo) => (
+                  {visibleCardTodos.map((todo: Todo) => (
                     <TodoCard
                       key={todo.id}
                       todo={todo}
                       tags={tags}
                       onToggle={() => handleToggleTodo(todo.id, todo.status)}
+                      showToggle={card.pluginType !== 'tapd'}
                       onEdit={() => {
                         if (card.pluginType === 'tapd') return;
                         if (card.cardType === 'shared' && card.userId !== user?.id) return;
