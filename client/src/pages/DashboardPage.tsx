@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout from 'react-grid-layout';
@@ -95,8 +95,12 @@ export function DashboardPage() {
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const CARD_H = 3;
-  const GRID_MARGIN_Y = 16;
-  const [viewportHeight, setViewportHeight] = useState<number>(window.innerHeight);
+  const CARD_W = 4;
+  const BASE_CARD_WIDTH = 380;
+  const GRID_ROW_HEIGHT = 150;
+  const GRID_MARGIN: [number, number] = [10, 10];
+  const [gridWidth, setGridWidth] = useState<number>(Math.max(320, window.innerWidth - 48));
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (axios.isAxiosError(error)) {
@@ -109,20 +113,32 @@ export function DashboardPage() {
   };
 
   useEffect(() => {
-    const onResize = () => setViewportHeight(window.innerHeight);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const updateGridWidth = () => {
+      const container = gridContainerRef.current;
+      if (!container) {
+        setGridWidth(Math.max(320, window.innerWidth - 48));
+        return;
+      }
+      const measured = Math.floor(container.getBoundingClientRect().width);
+      setGridWidth(Math.max(320, measured));
+    };
+
+    updateGridWidth();
+    const container = gridContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateGridWidth);
+      return () => window.removeEventListener('resize', updateGridWidth);
+    }
+
+    const observer = new ResizeObserver(() => updateGridWidth());
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
 
-  const adaptiveRowHeight = useMemo(() => {
-    const headerHeight = 72;
-    const mainPaddingTopBottom = 48;
-    const safetyBuffer = 120;
-    const availableHeight = Math.max(300, viewportHeight - headerHeight - mainPaddingTopBottom - safetyBuffer);
-    const perCardHeight = (availableHeight - GRID_MARGIN_Y) / 2;
-    const computed = Math.floor((perCardHeight - (CARD_H - 1) * GRID_MARGIN_Y) / CARD_H);
-    return Math.max(28, Math.min(52, computed));
-  }, [viewportHeight]);
+  const gridCols = useMemo(() => {
+    const cardsPerRow = Math.max(1, Math.round(gridWidth / BASE_CARD_WIDTH));
+    return cardsPerRow * CARD_W;
+  }, [gridWidth]);
 
   const { data: todos = [], isLoading: todosLoading } = useQuery({
     queryKey: ['todos'],
@@ -361,9 +377,9 @@ export function DashboardPage() {
       return;
     }
 
-    const DEFAULT_W = 4;
+    const DEFAULT_W = CARD_W;
     const DEFAULT_H = CARD_H;
-    const COLS = 12;
+    const COLS = gridCols;
     const sortedCards = [...(Array.isArray(cards) ? cards : [])].sort((a, b) =>
       a.y === b.y ? a.x - b.x : a.y - b.y
     );
@@ -492,7 +508,7 @@ export function DashboardPage() {
         i: newItem.i,
         x: newItem.x,
         y: newItem.y,
-        w: card.w || 4,
+        w: card.w || CARD_W,
         h: CARD_H,
       },
     });
@@ -509,16 +525,42 @@ export function DashboardPage() {
     );
   };
 
-  const gridLayout = cards.map((card: Card) => ({
-    i: card.id,
-    x: card.x || 0,
-    y: card.y || 0,
-    w: card.w || 4,
-    h: CARD_H,
-    minW: 2,
-    minH: CARD_H,
-    maxH: CARD_H,
-  }));
+  const gridLayout = useMemo(() => {
+    const orderedCards = [...(Array.isArray(cards) ? cards : [])].sort((a, b) =>
+      a.y === b.y ? a.x - b.x : a.y - b.y
+    );
+
+    return orderedCards.reduce<Array<{
+      i: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      minW: number;
+      minH: number;
+      maxH: number;
+    }>>((items, card) => {
+      const last = items[items.length - 1];
+      const nextXBase = last ? last.x + last.w : 0;
+      const nextYBase = last ? last.y : 0;
+      const normalizedW = Math.min(card.w || CARD_W, gridCols);
+      const wraps = nextXBase + normalizedW > gridCols;
+      const x = wraps ? 0 : nextXBase;
+      const y = wraps ? nextYBase + CARD_H : nextYBase;
+
+      items.push({
+        i: card.id,
+        x,
+        y,
+        w: normalizedW,
+        h: CARD_H,
+        minW: 2,
+        minH: CARD_H,
+        maxH: CARD_H,
+      });
+      return items;
+    }, []);
+  }, [cards, gridCols]);
 
   if (todosLoading || cardsLoading) {
     return <div className="loading">加载中...</div>;
@@ -545,19 +587,26 @@ export function DashboardPage() {
       />
 
       <main className="main">
+        <div ref={gridContainerRef}>
         <GridLayoutComponent
-          key={`grid-${adaptiveRowHeight}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join("|")}`}
+          key={`grid-${gridCols}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join("|")}`}
           autoSize
           className="layout"
           layout={gridLayout}
-          cols={12}
-          rowHeight={adaptiveRowHeight}
-          width={1200}
-          margin={[16, GRID_MARGIN_Y]}
+          width={gridWidth}
+          gridConfig={{
+            cols: gridCols,
+            rowHeight: GRID_ROW_HEIGHT,
+            margin: GRID_MARGIN,
+          }}
+          dragConfig={{
+            handle: '.card-header',
+            cancel: '.card-actions, .card-actions button',
+          }}
+          resizeConfig={{
+            enabled: false,
+          }}
           onDragStop={handleDragStop}
-          draggableHandle=".card-header"
-          draggableCancel=".card-actions, .card-actions button"
-          isResizable={false}
         >
           {(Array.isArray(cards) ? cards : []).map((card: Card) => (
             <div key={card.id} className="grid-card-inner">
@@ -607,6 +656,7 @@ export function DashboardPage() {
             </div>
           ))}
         </GridLayoutComponent>
+        </div>
       </main>
 
       {showTodoModal && (
