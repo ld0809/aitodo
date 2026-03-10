@@ -401,3 +401,185 @@ test('shrinking a card should pull up related cards below it', async ({ page }) 
   await expect.poll(() => patchedPayloadByCard.has('layout-card-bottom-shrink')).toBeTruthy();
   expect(Number(patchedPayloadByCard.get('layout-card-bottom-shrink')?.y)).toBeLessThan(5);
 });
+
+test('dragging should not move affected cards until drop, then pull cards up from vacated area', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  const now = new Date().toISOString();
+  const cards = [
+    {
+      id: 'drag-source-card',
+      userId: 'layout-owner',
+      name: '拖拽源卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'drag-follow-up-card',
+      userId: 'layout-owner',
+      name: '旧位置下方卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 3,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  const patchedPayloadByCard = new Map<string, Record<string, unknown>>();
+  await mockDashboardApis(page, cards, now, (cardId, payload) => {
+    if (cardId) patchedPayloadByCard.set(cardId, payload);
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  const sourceCard = page.locator('.react-grid-item').filter({ hasText: '拖拽源卡片' }).first();
+  const followCard = page.locator('.react-grid-item').filter({ hasText: '旧位置下方卡片' }).first();
+  await sourceCard.waitFor();
+  await followCard.waitFor();
+
+  const sourceBefore = await sourceCard.boundingBox();
+  const followBefore = await followCard.boundingBox();
+  expect(sourceBefore).not.toBeNull();
+  expect(followBefore).not.toBeNull();
+  if (!sourceBefore || !followBefore) return;
+
+  const startX = sourceBefore.x + sourceBefore.width / 2;
+  const startY = sourceBefore.y + 24;
+  const targetX = startX + sourceBefore.width + 60;
+  const targetY = startY;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, targetY, { steps: 8 });
+
+  const followDuringDrag = await followCard.boundingBox();
+  expect(followDuringDrag).not.toBeNull();
+  if (!followDuringDrag) return;
+  expect(Math.abs(followDuringDrag.y - followBefore.y)).toBeLessThan(2);
+
+  await page.mouse.up();
+
+  await expect.poll(async () => {
+    const currentFollow = await followCard.boundingBox();
+    return currentFollow?.y ?? followBefore.y;
+  }).toBeLessThan(followBefore.y - 40);
+
+  await expect.poll(() => patchedPayloadByCard.has('drag-source-card')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('drag-follow-up-card')).toBeTruthy();
+  expect(Number(patchedPayloadByCard.get('drag-follow-up-card')?.y)).toBeLessThan(3);
+});
+
+test('dragging onto occupied position should push occupied card and cards below downward', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  const now = new Date().toISOString();
+  const cards = [
+    {
+      id: 'drag-top-card',
+      userId: 'layout-owner',
+      name: '顶部卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'drag-middle-card',
+      userId: 'layout-owner',
+      name: '被占用卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 3,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'drag-bottom-card',
+      userId: 'layout-owner',
+      name: '被占用下方卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 0,
+      y: 6,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  const patchedPayloadByCard = new Map<string, Record<string, unknown>>();
+  await mockDashboardApis(page, cards, now, (cardId, payload) => {
+    if (cardId) patchedPayloadByCard.set(cardId, payload);
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  const topCard = page.locator('.react-grid-item').filter({ hasText: '顶部卡片' }).first();
+  await topCard.waitFor();
+
+  const topBefore = await topCard.boundingBox();
+  expect(topBefore).not.toBeNull();
+  if (!topBefore) return;
+
+  const startX = topBefore.x + topBefore.width / 2;
+  const startY = topBefore.y + 24;
+  const targetY = startY + 520;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, targetY, { steps: 10 });
+  await page.mouse.up();
+
+  await expect.poll(() => patchedPayloadByCard.has('drag-top-card')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('drag-middle-card')).toBeTruthy();
+  await expect.poll(() => patchedPayloadByCard.has('drag-bottom-card')).toBeTruthy();
+
+  expect(Number(patchedPayloadByCard.get('drag-top-card')?.y)).toBeGreaterThan(0);
+  expect(Number(patchedPayloadByCard.get('drag-middle-card')?.y)).toBeGreaterThan(3);
+  expect(Number(patchedPayloadByCard.get('drag-bottom-card')?.y)).toBeGreaterThan(6);
+});

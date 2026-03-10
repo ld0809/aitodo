@@ -65,6 +65,11 @@ interface GridLayoutItem {
   h: number;
 }
 
+const dragFreeCompactor = {
+  ...noCompactor,
+  allowOverlap: true,
+};
+
 function intersectsHorizontally(left: GridLayoutItem, right: GridLayoutItem): boolean {
   return left.x < right.x + right.w && right.x < left.x + left.w;
 }
@@ -75,16 +80,27 @@ function intersectsVertically(left: GridLayoutItem, right: GridLayoutItem): bool
 
 function resolveLayoutOverlaps(
   layout: readonly GridLayoutItem[],
-  options?: { compactUp?: boolean },
+  options?: { compactUp?: boolean; pinItemId?: string },
 ): GridLayoutItem[] {
   const compactUp = options?.compactUp ?? false;
+  const pinItemId = options?.pinItemId;
   const sorted = [...layout]
     .map((item) => ({ ...item }))
     .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+  const pinnedItem = pinItemId ? sorted.find((item) => item.i === pinItemId) : undefined;
+  const queue = [
+    ...(pinnedItem ? [pinnedItem] : []),
+    ...sorted.filter((item) => item.i !== pinItemId),
+  ];
   const placed: GridLayoutItem[] = [];
 
-  for (const item of sorted) {
-    let nextY = compactUp ? 0 : Math.max(0, item.y);
+  for (const item of queue) {
+    const isPinned = !!pinItemId && item.i === pinItemId;
+    const overlapFloorY = placed
+      .filter((placedItem) => intersectsHorizontally(item, placedItem))
+      .reduce((maxY, placedItem) => Math.max(maxY, placedItem.y + placedItem.h), 0);
+    const baseY = isPinned ? item.y : compactUp ? 0 : item.y;
+    let nextY = Math.max(Math.max(0, baseY), overlapFloorY);
     while (true) {
       const probe = { ...item, y: nextY };
       const collisions = placed.filter(
@@ -531,7 +547,7 @@ export function DashboardPage() {
 
   const applyResolvedLayout = (
     layout: readonly GridLayoutItem[],
-    options?: { compactUp?: boolean },
+    options?: { compactUp?: boolean; pinItemId?: string },
   ) => {
     const cardMap = new Map((Array.isArray(cards) ? cards : []).map((card: Card) => [card.id, card]));
     const normalizedLayout = layout
@@ -583,8 +599,15 @@ export function DashboardPage() {
     });
   };
 
-  const handleDragStop = (layout: readonly GridLayoutItem[]) => {
-    applyResolvedLayout(layout);
+  const handleDragStop = (
+    layout: readonly GridLayoutItem[],
+    _oldItem: GridLayoutItem | null,
+    newItem: GridLayoutItem | null,
+  ) => {
+    applyResolvedLayout(layout, {
+      compactUp: true,
+      pinItemId: newItem?.i,
+    });
   };
 
   const handleResizeStop = (layout: readonly GridLayoutItem[]) => {
@@ -658,7 +681,7 @@ export function DashboardPage() {
             rowHeight: GRID_ROW_HEIGHT,
             margin: GRID_MARGIN,
           }}
-          compactor={noCompactor}
+          compactor={dragFreeCompactor}
           dragConfig={{
             handle: '.card-header',
             cancel: '.card-actions, .card-actions button',
