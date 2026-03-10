@@ -402,7 +402,7 @@ test('shrinking a card should pull up related cards below it', async ({ page }) 
   expect(Number(patchedPayloadByCard.get('layout-card-bottom-shrink')?.y)).toBeLessThan(5);
 });
 
-test('dragging should not move affected cards until drop, then pull cards up from vacated area', async ({ page }) => {
+test('dragging to blank area should only pull cards up in vacated source area', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 
   const now = new Date().toISOString();
@@ -443,6 +443,42 @@ test('dragging should not move affected cards until drop, then pull cards up fro
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: 'drag-target-above-card',
+      userId: 'layout-owner',
+      name: '目标区域上方卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 4,
+      y: 0,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'drag-target-below-card',
+      userId: 'layout-owner',
+      name: '目标区域下方卡片',
+      cardType: 'personal',
+      sortBy: 'due_at',
+      sortOrder: 'asc',
+      x: 4,
+      y: 6,
+      w: 4,
+      h: 3,
+      pluginType: 'local_todo',
+      pluginConfigJson: null,
+      tags: [],
+      participants: [],
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
 
   const patchedPayloadByCard = new Map<string, Record<string, unknown>>();
@@ -455,19 +491,27 @@ test('dragging should not move affected cards until drop, then pull cards up fro
 
   const sourceCard = page.locator('.react-grid-item').filter({ hasText: '拖拽源卡片' }).first();
   const followCard = page.locator('.react-grid-item').filter({ hasText: '旧位置下方卡片' }).first();
+  const targetAboveCard = page.locator('.react-grid-item').filter({ hasText: '目标区域上方卡片' }).first();
+  const targetBelowCard = page.locator('.react-grid-item').filter({ hasText: '目标区域下方卡片' }).first();
   await sourceCard.waitFor();
   await followCard.waitFor();
+  await targetAboveCard.waitFor();
+  await targetBelowCard.waitFor();
 
   const sourceBefore = await sourceCard.boundingBox();
   const followBefore = await followCard.boundingBox();
+  const targetAboveBefore = await targetAboveCard.boundingBox();
+  const targetBelowBefore = await targetBelowCard.boundingBox();
   expect(sourceBefore).not.toBeNull();
   expect(followBefore).not.toBeNull();
-  if (!sourceBefore || !followBefore) return;
+  expect(targetAboveBefore).not.toBeNull();
+  expect(targetBelowBefore).not.toBeNull();
+  if (!sourceBefore || !followBefore || !targetAboveBefore || !targetBelowBefore) return;
 
   const startX = sourceBefore.x + sourceBefore.width / 2;
   const startY = sourceBefore.y + 24;
-  const targetX = startX + sourceBefore.width + 60;
-  const targetY = startY;
+  const targetX = targetAboveBefore.x + targetAboveBefore.width / 2;
+  const targetY = targetAboveBefore.y + targetAboveBefore.height + 30;
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
@@ -485,8 +529,22 @@ test('dragging should not move affected cards until drop, then pull cards up fro
     return currentFollow?.y ?? followBefore.y;
   }).toBeLessThan(followBefore.y - 40);
 
+  await expect.poll(async () => {
+    const currentTargetAbove = await targetAboveCard.boundingBox();
+    if (!currentTargetAbove) return Number.MAX_SAFE_INTEGER;
+    return Math.abs(currentTargetAbove.y - targetAboveBefore.y);
+  }).toBeLessThan(2);
+
+  await expect.poll(async () => {
+    const currentTargetBelow = await targetBelowCard.boundingBox();
+    if (!currentTargetBelow) return Number.MAX_SAFE_INTEGER;
+    return Math.abs(currentTargetBelow.y - targetBelowBefore.y);
+  }).toBeLessThan(2);
+
   await expect.poll(() => patchedPayloadByCard.has('drag-source-card')).toBeTruthy();
   await expect.poll(() => patchedPayloadByCard.has('drag-follow-up-card')).toBeTruthy();
+  expect(patchedPayloadByCard.has('drag-target-above-card')).toBeFalsy();
+  expect(patchedPayloadByCard.has('drag-target-below-card')).toBeFalsy();
   expect(Number(patchedPayloadByCard.get('drag-follow-up-card')?.y)).toBeLessThan(3);
 });
 

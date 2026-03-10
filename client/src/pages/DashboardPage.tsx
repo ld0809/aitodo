@@ -80,25 +80,31 @@ function intersectsVertically(left: GridLayoutItem, right: GridLayoutItem): bool
 
 function resolveLayoutOverlaps(
   layout: readonly GridLayoutItem[],
-  options?: { compactUp?: boolean; pinItemId?: string },
+  options?: { compactUp?: boolean; pinItemId?: string; frozenItemIds?: readonly string[] },
 ): GridLayoutItem[] {
   const compactUp = options?.compactUp ?? false;
   const pinItemId = options?.pinItemId;
+  const frozenItemIdSet = new Set(options?.frozenItemIds ?? []);
   const sorted = [...layout]
     .map((item) => ({ ...item }))
     .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
-  const pinnedItem = pinItemId ? sorted.find((item) => item.i === pinItemId) : undefined;
+  const frozenItems = sorted.filter((item) => frozenItemIdSet.has(item.i));
+  const movableItems = sorted.filter((item) => !frozenItemIdSet.has(item.i));
+  const pinnedItem = pinItemId ? movableItems.find((item) => item.i === pinItemId) : undefined;
   const queue = [
     ...(pinnedItem ? [pinnedItem] : []),
-    ...sorted.filter((item) => item.i !== pinItemId),
+    ...movableItems.filter((item) => item.i !== pinItemId),
   ];
-  const placed: GridLayoutItem[] = [];
+  const placed: GridLayoutItem[] = frozenItems.map((item) => ({ ...item }));
 
   for (const item of queue) {
     const isPinned = !!pinItemId && item.i === pinItemId;
-    const overlapFloorY = placed
-      .filter((placedItem) => intersectsHorizontally(item, placedItem))
-      .reduce((maxY, placedItem) => Math.max(maxY, placedItem.y + placedItem.h), 0);
+    const shouldApplyPinnedFloor = !isPinned && !!pinnedItem && item.y >= pinnedItem.y;
+    const overlapFloorY = shouldApplyPinnedFloor
+      ? placed
+          .filter((placedItem) => intersectsHorizontally(item, placedItem))
+          .reduce((maxY, placedItem) => Math.max(maxY, placedItem.y + placedItem.h), 0)
+      : 0;
     const baseY = isPinned ? item.y : compactUp ? 0 : item.y;
     let nextY = Math.max(Math.max(0, baseY), overlapFloorY);
     while (true) {
@@ -547,7 +553,7 @@ export function DashboardPage() {
 
   const applyResolvedLayout = (
     layout: readonly GridLayoutItem[],
-    options?: { compactUp?: boolean; pinItemId?: string },
+    options?: { compactUp?: boolean; pinItemId?: string; frozenItemIds?: readonly string[] },
   ) => {
     const cardMap = new Map((Array.isArray(cards) ? cards : []).map((card: Card) => [card.id, card]));
     const normalizedLayout = layout
@@ -601,12 +607,66 @@ export function DashboardPage() {
 
   const handleDragStop = (
     layout: readonly GridLayoutItem[],
-    _oldItem: GridLayoutItem | null,
+    oldItem: GridLayoutItem | null,
     newItem: GridLayoutItem | null,
   ) => {
+    if (!newItem) return;
+    const normalizedLayout = layout
+      .filter((item): item is GridLayoutItem => typeof item.i === 'string')
+      .map((item) => ({
+        i: item.i,
+        x: Math.max(0, Math.round(item.x)),
+        y: Math.max(0, Math.round(item.y)),
+        w: Math.max(2, Math.min(gridCols, Math.round(item.w))),
+        h: Math.max(CARD_MIN_H, Math.round(item.h)),
+      }));
+    const draggedItem = normalizedLayout.find((item) => item.i === newItem.i);
+    if (!draggedItem) return;
+    const hasTargetCollision = normalizedLayout.some(
+      (item) =>
+        item.i !== draggedItem.i &&
+        intersectsHorizontally(item, draggedItem) &&
+        intersectsVertically(item, draggedItem),
+    );
+
+    if (!hasTargetCollision) {
+      const fallbackOldItem = cards.find((card: Card) => card.id === draggedItem.i);
+      const sourceAnchor: GridLayoutItem = {
+        i: draggedItem.i,
+        x: Math.max(0, Math.round(oldItem?.x ?? fallbackOldItem?.x ?? draggedItem.x)),
+        y: Math.max(0, Math.round(oldItem?.y ?? fallbackOldItem?.y ?? draggedItem.y)),
+        w: Math.max(2, Math.min(gridCols, Math.round(oldItem?.w ?? fallbackOldItem?.w ?? draggedItem.w))),
+        h: Math.max(CARD_MIN_H, Math.round(oldItem?.h ?? fallbackOldItem?.h ?? draggedItem.h)),
+      };
+      const sourceMinY = sourceAnchor.y + sourceAnchor.h;
+      const sourceFollowerIds = normalizedLayout
+        .filter(
+          (item) =>
+            item.i !== draggedItem.i &&
+            intersectsHorizontally(item, sourceAnchor) &&
+            item.y >= sourceMinY,
+        )
+        .map((item) => item.i);
+      if (sourceFollowerIds.length === 0) {
+        applyResolvedLayout([draggedItem]);
+        return;
+      }
+      const movableIdSet = new Set([draggedItem.i, ...sourceFollowerIds]);
+      const frozenItemIds = normalizedLayout
+        .filter((item) => !movableIdSet.has(item.i))
+        .map((item) => item.i);
+
+      applyResolvedLayout(normalizedLayout, {
+        compactUp: true,
+        pinItemId: draggedItem.i,
+        frozenItemIds,
+      });
+      return;
+    }
+
     applyResolvedLayout(layout, {
       compactUp: true,
-      pinItemId: newItem?.i,
+      pinItemId: newItem.i,
     });
   };
 
