@@ -132,6 +132,7 @@ command -v git >/dev/null 2>&1
 command -v node >/dev/null 2>&1
 command -v npm >/dev/null 2>&1
 command -v pm2 >/dev/null 2>&1
+command -v curl >/dev/null 2>&1
 
 RELEASES_DIR="$APP_ROOT/releases"
 CURRENT_LINK="$APP_ROOT/current"
@@ -145,7 +146,21 @@ fi
 
 echo "[deploy] new_release=$NEW_RELEASE"
 mkdir -p "$RELEASES_DIR"
-git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$NEW_RELEASE"
+
+OWNER_REPO="$(echo "$REPO_URL" | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
+if [[ "$OWNER_REPO" == "$REPO_URL" || "$OWNER_REPO" != */* ]]; then
+  echo "[deploy] unsupported repo url for codeload: $REPO_URL" >&2
+  exit 1
+fi
+
+ARCHIVE_URL="https://codeload.github.com/$OWNER_REPO/tar.gz/refs/heads/$BRANCH"
+ARCHIVE_FILE="/tmp/aitodo-$TS.tar.gz"
+echo "[deploy] download archive: $ARCHIVE_URL"
+curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 300 "$ARCHIVE_URL" -o "$ARCHIVE_FILE"
+
+mkdir -p "$NEW_RELEASE"
+tar -xzf "$ARCHIVE_FILE" -C "$NEW_RELEASE" --strip-components=1
+rm -f "$ARCHIVE_FILE"
 
 if [[ -n "$PREV_RELEASE" ]]; then
   if [[ -f "$PREV_RELEASE/backend/.env" ]]; then cp "$PREV_RELEASE/backend/.env" "$NEW_RELEASE/backend/.env"; fi
