@@ -160,6 +160,10 @@ export function DashboardPage() {
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const [showCompletedByCard, setShowCompletedByCard] = useState<Record<string, boolean>>({});
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [focusedQuickInputCardId, setFocusedQuickInputCardId] = useState<string | null>(null);
+  const [quickTodoDraftByCardId, setQuickTodoDraftByCardId] = useState<Record<string, string>>({});
+  const [quickCreatingCardId, setQuickCreatingCardId] = useState<string | null>(null);
   const CARD_H = 3;
   const CARD_MIN_H = 2;
   const CARD_W = 4;
@@ -535,6 +539,44 @@ export function DashboardPage() {
     }));
   };
 
+  const handleChangeQuickTodoDraft = (cardId: string, content: string) => {
+    setQuickTodoDraftByCardId((prev) => ({
+      ...prev,
+      [cardId]: content,
+    }));
+  };
+
+  const handleQuickCreateTodo = (card: Card) => {
+    const content = (quickTodoDraftByCardId[card.id] ?? '').trim();
+    if (!content || quickCreatingCardId === card.id) {
+      return;
+    }
+
+    const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
+    setQuickCreatingCardId(card.id);
+    createTodoMutation.mutate(
+      {
+        content,
+        cardId: card.id,
+        tagIds: cardTagIds,
+      },
+      {
+        onSuccess: () => {
+          setQuickTodoDraftByCardId((prev) => ({
+            ...prev,
+            [card.id]: '',
+          }));
+        },
+        onError: (error: unknown) => {
+          alert(getErrorMessage(error, '快捷创建待办失败'));
+        },
+        onSettled: () => {
+          setQuickCreatingCardId((prev) => (prev === card.id ? null : prev));
+        },
+      },
+    );
+  };
+
   const confirmDeleteCard = () => {
     if (!pendingDeleteCardId) return;
     deleteCardMutation.mutate(pendingDeleteCardId);
@@ -782,7 +824,7 @@ export function DashboardPage() {
           compactor={dragFreeCompactor}
           dragConfig={{
             handle: '.card-header',
-            cancel: '.card-actions, .card-actions button',
+            cancel: '.card-actions, .card-actions button, .card-quick-input',
           }}
           resizeConfig={{
             enabled: true,
@@ -805,13 +847,59 @@ export function DashboardPage() {
                 const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
                 const isCardOwner = card.userId === user?.id;
                 const isTapdCard = card.pluginType === 'tapd';
+                const canQuickCreate = isCardOwner && !isTapdCard;
+                const quickTodoDraft = quickTodoDraftByCardId[card.id] ?? '';
+                const showQuickInput =
+                  canQuickCreate &&
+                  (hoveredCardId === card.id || focusedQuickInputCardId === card.id);
                 return (
-              <div className="card">
+              <div
+                className="card"
+                onMouseEnter={() => setHoveredCardId(card.id)}
+                onMouseLeave={() => {
+                  setHoveredCardId((prev) => (prev === card.id ? null : prev));
+                }}
+              >
                 <div className="card-header">
-                  <div className="card-title">
-                    {card.name}{card.cardType === 'shared' ? ' · 共享' : ''}
-                    <span className="count">{visibleCardTodos.length}</span>
-                  </div>
+                  {showQuickInput ? (
+                    <input
+                      className="card-quick-input"
+                      value={quickTodoDraft}
+                      placeholder="输入待办，回车创建"
+                      maxLength={500}
+                      disabled={quickCreatingCardId === card.id}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onFocus={() => setFocusedQuickInputCardId(card.id)}
+                      onBlur={() => {
+                        setFocusedQuickInputCardId((prev) => (prev === card.id ? null : prev));
+                      }}
+                      onChange={(e) => handleChangeQuickTodoDraft(card.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleQuickCreateTodo(card);
+                          return;
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setQuickTodoDraftByCardId((prev) => ({
+                            ...prev,
+                            [card.id]: '',
+                          }));
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="card-title">
+                      <span className="card-title-text">
+                        {card.name}{card.cardType === 'shared' ? ' · 共享' : ''}
+                      </span>
+                      <span className="count">{visibleCardTodos.length}</span>
+                    </div>
+                  )}
                   <div className="card-actions">
                     {!isTapdCard && (
                       <button
