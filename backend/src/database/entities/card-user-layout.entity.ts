@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { Card } from './card.entity';
 import { User } from './user.entity';
 
@@ -12,12 +12,14 @@ export class CardUserLayout {
   cardId!: string;
 
   @ManyToOne(() => Card, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'card_id' })
   card!: Card;
 
   @Column({ name: 'user_id' })
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
   user!: User;
 
   @Column({ type: 'integer', default: 0 })

@@ -32,13 +32,25 @@ function resolveDatabasePath() {
   return databasePath;
 }
 
+function resolveTypeormSynchronize() {
+  const raw = process.env.TYPEORM_SYNCHRONIZE?.trim().toLowerCase();
+  if (raw === 'true' || raw === '1') {
+    return true;
+  }
+  if (raw === 'false' || raw === '0') {
+    return false;
+  }
+
+  return true;
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: resolveDatabasePath(),
       entities: [User, EmailCode, Tag, Todo, TodoProgressEntry, Card, TapdConfig, CardUserLayout],
-      synchronize: true,
+      synchronize: resolveTypeormSynchronize(),
       logging: false,
     }),
     AuthModule,

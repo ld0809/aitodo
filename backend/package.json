@@ -10,7 +10,9 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
     "test:e2e": "jest --config ./jest-e2e.json --runInBand",
     "backup:db": "bash ./scripts/backup-db.sh",
-    "restore:db": "bash ./scripts/restore-db.sh"
+    "restore:db": "bash ./scripts/restore-db.sh",
+    "db:migration:generate": "ts-node ./scripts/generate-schema-migration.ts",
+    "db:migration:apply": "node ./scripts/apply-sql-migrations.js"
   },
   "dependencies": {
     "@iflow-ai/iflow-cli-sdk": "^0.1.9",

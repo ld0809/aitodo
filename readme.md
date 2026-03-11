@@ -73,3 +73,40 @@
 3. 将仓库推送到远端git@github.com:ld0809/aitodo.git项目，目前项目为空，可以直接拿本地代码推送覆盖
 4. 部署项目到服务器，服务器环境是ubuntu
    1. 请先制定部署方案让我review一下
+
+## 发布与数据库迁移（新增）
+
+### 1. 本地生成 SQL 迁移文件
+
+当 `backend/src/database/entities` 有结构变更时，先生成 SQL 文件并提交：
+
+```bash
+cd backend
+npm run db:migration:generate -- --name <change_name>
+```
+
+生成目录：`backend/migrations/sql/*.sql`
+
+### 2. 本地执行迁移（可选）
+
+```bash
+cd backend
+npm run db:migration:apply -- --db ./data/app.db
+```
+
+迁移记录表：`schema_migrations`
+
+### 3. 一键发布（含数据库迁移）
+
+根目录执行：
+
+```bash
+scripts/deploy-release.sh
+```
+
+发布脚本会自动完成：
+1. 推送当前分支到远端（默认 `main`）
+2. 服务器创建新 release 目录并构建前后端
+3. 执行 `backend/migrations/sql` 下未应用的 SQL
+4. 切换 `/opt/aitodo/current` 软链并重启 PM2
+5. 做健康检查，失败自动回滚到上一个 release
