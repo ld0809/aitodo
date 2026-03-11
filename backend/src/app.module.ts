@@ -18,6 +18,7 @@ import { TodoProgressEntry } from './database/entities/todo-progress.entity';
 import { User } from './database/entities/user.entity';
 import { TapdConfig } from './database/entities/tapd-config.entity';
 import { ReportsModule } from './reports/reports.module';
+import { HealthModule } from './health/health.module';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -47,6 +48,7 @@ function resolveDatabasePath() {
     CardsModule,
     TapdModule,
     ReportsModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

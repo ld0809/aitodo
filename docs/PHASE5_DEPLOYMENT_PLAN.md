@@ -23,7 +23,7 @@
 - 日志目录：`/opt/aitodo/logs`
 
 ## 4. 环境准备
-- 安装：`git`、`nodejs 20.x`、`npm`、`nginx`、`pm2`
+- 安装：`nginx`、`pm2`
 - 创建运行用户（建议非 root，如 `deploy`）
 - 开放防火墙端口：`80/443`（对外），`3002` 仅本机访问。
 
@@ -36,8 +36,8 @@
 - `DATABASE_PATH=/opt/aitodo/backend/data/app.db`
 - `AI_REPORT_IFLOW_TIMEOUT_MS=300000`
 - `AI_REPORT_IFLOW_LOG_LEVEL=ERROR`
-- `CORS_ORIGINS=https://<你的域名>,http://118.89.115.242`
-
+- `CORS_ORIGINS=https://todo.vipke888.com>,http://118.89.115.242`
+- 还需要包含tapd api的user和token
 ### 5.2 前端 `.env.production`
 - `VITE_API_BASE_URL=/api/v1`
 
@@ -58,6 +58,7 @@
 7. 验证：
    - `curl http://127.0.0.1:3002/api/v1/health`（如暂未实现 health，可改为任一可用 GET 接口）
    - 浏览器访问首页、登录、看板、AI 报告接口连通性。
+8. db数据从本地copy到服务器本地目录/opt/aitodo/backend/data/app.db
 
 ## 7. 安全与稳定性
 - DB 文件不进入仓库，仅保留在服务器本地目录并限制权限（`chmod 600`）。
@@ -75,5 +76,9 @@
 
 ## 9. 评审确认点
 - 是否使用域名 + HTTPS（推荐）还是先用 IP 访问。
+  - 否，先用ip访问，后续再配置域名和https
 - 是否需要新增 `/health` 探活接口（建议新增，便于监控）。
+  - 是
 - 是否接受 `PM2 + Nginx` 方案（若偏好容器化，可改 Docker Compose）。
+  - 是
+
