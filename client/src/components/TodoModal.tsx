@@ -266,6 +266,12 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
   };
 
   const handleTextareaClickOrKeyUp = (event: React.KeyboardEvent<HTMLTextAreaElement> | React.MouseEvent<HTMLTextAreaElement>) => {
+    if ('key' in event) {
+      const navKeys = new Set(['ArrowDown', 'ArrowUp', 'Enter', 'Escape']);
+      if (navKeys.has(event.key) && activeMention) {
+        return;
+      }
+    }
     const target = event.currentTarget;
     updateMentionStateByCursor(target.value, target.selectionStart);
   };
