@@ -108,9 +108,11 @@ export class AuthService {
       throw new NotFoundException('user not found');
     }
 
+    const inputCode = dto.code.trim();
     const emailCode = await this.emailCodeRepository.findOne({
       where: {
         userId: user.id,
+        code: inputCode,
         purpose: 'verify_email',
         usedAt: IsNull(),
       },
@@ -118,9 +120,17 @@ export class AuthService {
     });
 
     if (!emailCode) {
-      throw new BadRequestException('verification code not found');
-    }
-    if (emailCode.code !== dto.code) {
+      const latestUnusedCode = await this.emailCodeRepository.findOne({
+        where: {
+          userId: user.id,
+          purpose: 'verify_email',
+          usedAt: IsNull(),
+        },
+        order: { createdAt: 'DESC' },
+      });
+      if (!latestUnusedCode) {
+        throw new BadRequestException('verification code not found');
+      }
       throw new BadRequestException('verification code invalid');
     }
     if (emailCode.expiresAt.getTime() < Date.now()) {
