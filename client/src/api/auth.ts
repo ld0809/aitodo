@@ -8,6 +8,7 @@ export interface RegisterResponse extends User {
 export interface SendEmailCodeResponse {
   email: string;
   expiresAt: string;
+  emailSent?: boolean;
   debugCode?: string;
 }
 

@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Repository, IsNull } from 'typeorm';
 import { EmailCode } from '../database/entities/email-code.entity';
 import { User } from '../database/entities/user.entity';
+import { AuthMailService } from './auth-mail.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailCodeDto } from './dto/send-email-code.dto';
@@ -25,6 +26,7 @@ export class AuthService {
     @InjectRepository(EmailCode)
     private readonly emailCodeRepository: Repository<EmailCode>,
     private readonly jwtService: JwtService,
+    private readonly authMailService: AuthMailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -83,10 +85,12 @@ export class AuthService {
     });
 
     const savedCode = await this.emailCodeRepository.save(emailCode);
+    const emailSent = await this.authMailService.sendVerificationCodeEmail(savedCode.email, savedCode.code, savedCode.expiresAt);
 
     const result = {
       email: savedCode.email,
       expiresAt: savedCode.expiresAt,
+      emailSent,
     };
     if (!this.shouldExposeVerifyCode()) {
       return result;

@@ -110,3 +110,22 @@ scripts/deploy-release.sh
 3. 执行 `backend/migrations/sql` 下未应用的 SQL
 4. 切换 `/opt/aitodo/current` 软链并重启 PM2
 5. 做健康检查，失败自动回滚到上一个 release
+
+## 邮箱验证码发送配置（SMTP）
+
+后端会在 `POST /auth/send-email-code` 真实发送验证码邮件。请在 `backend/.env`（以及线上 `backend/.env`）填写：
+
+```env
+SMTP_HOST=smtp.zoho.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_REQUIRE_TLS=false
+SMTP_USER=your_account@your_domain.com
+SMTP_PASS=your_smtp_password_or_app_password
+SMTP_FROM="AI待办 <your_account@your_domain.com>"
+SMTP_VERIFY_SUBJECT=【AI待办】邮箱验证码
+```
+
+验证码是否在接口中明文返回由 `AUTH_EXPOSE_VERIFY_CODE` 控制：
+- `true`：返回 `debugVerificationCode/debugCode`
+- `false`：不返回调试验证码
