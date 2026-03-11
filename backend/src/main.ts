@@ -4,16 +4,29 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
+function resolveCorsOrigins(): string[] {
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (configuredOrigins.length > 0) {
+    return configuredOrigins;
+  }
+
+  return [
+    'http://localhost:5173',
+    'http://localhost:3002',
+    'http://172.28.1.188:5173',
+  ];
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Enable CORS for frontend
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3002',
-      'http://172.28.1.188:5173',
-    ],
+    origin: resolveCorsOrigins(),
     credentials: true,
   });
 

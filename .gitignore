@@ -1,2 +1,4 @@
 .omc
 backend/data/backups/
+backend/data/*.db
+backend/data/*.sqlite
