@@ -9,13 +9,17 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
 
   const ownerEmail = `phase4_owner_${Date.now()}@test.com`;
   const memberEmail = `phase4_member_${Date.now()}@test.com`;
+  const secondMemberEmail = `phase4_member2_${Date.now()}@test.com`;
   const password = 'Passw0rd123';
 
   let ownerToken = '';
   let memberToken = '';
+  let secondMemberToken = '';
   let sharedCardId = '';
   let hiddenSharedCardId = '';
   let sharedTodoId = '';
+  let memberMentionKey = '';
+  let secondMemberMentionKey = '';
 
   const getHttpApp = () => app.getHttpServer();
   const getData = <T>(body: unknown): T => {
@@ -61,8 +65,10 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   it('register owner/member users', async () => {
     ownerToken = await registerAndLogin(ownerEmail);
     memberToken = await registerAndLogin(memberEmail);
+    secondMemberToken = await registerAndLogin(secondMemberEmail);
     expect(ownerToken.length).toBeGreaterThan(10);
     expect(memberToken.length).toBeGreaterThan(10);
+    expect(secondMemberToken.length).toBeGreaterThan(10);
   });
 
   it('owner creates shared cards with participant emails', async () => {
@@ -86,13 +92,23 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
         name: 'Phase4 Shared Card',
         cardType: 'shared',
         pluginType: 'local_todo',
-        participantEmails: [memberEmail],
+        participantEmails: [memberEmail, secondMemberEmail],
       });
     expect(createVisibleCardRes.status).toBe(201);
-    const visibleCardData = getData<{ id: string; cardType: string; participants: Array<{ email: string }> }>(createVisibleCardRes.body);
+    const visibleCardData = getData<{
+      id: string;
+      cardType: string;
+      participants: Array<{ email: string; mentionKey: string }>;
+    }>(createVisibleCardRes.body);
     sharedCardId = visibleCardData.id;
     expect(visibleCardData.cardType).toBe('shared');
     expect(visibleCardData.participants.map((item) => item.email.toLowerCase())).toContain(memberEmail.toLowerCase());
+    expect(visibleCardData.participants.map((item) => item.email.toLowerCase())).toContain(secondMemberEmail.toLowerCase());
+    memberMentionKey = visibleCardData.participants.find((item) => item.email.toLowerCase() === memberEmail.toLowerCase())?.mentionKey ?? '';
+    secondMemberMentionKey =
+      visibleCardData.participants.find((item) => item.email.toLowerCase() === secondMemberEmail.toLowerCase())?.mentionKey ?? '';
+    expect(memberMentionKey.length).toBeGreaterThan(0);
+    expect(secondMemberMentionKey.length).toBeGreaterThan(0);
 
     const createHiddenCardRes = await request(getHttpApp())
       .post(`${baseUrl}/cards`)
@@ -108,8 +124,6 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   });
 
   it('creating todos in shared card auto-adds mentioned users as assignees', async () => {
-    const memberMentionKey = memberEmail.split('@')[0];
-
     const createSharedTodoRes = await request(getHttpApp())
       .post(`${baseUrl}/todos`)
       .set('Authorization', `Bearer ${ownerToken}`)
@@ -135,7 +149,23 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     expect(unmentionedTodoData.assignees).toHaveLength(0);
   });
 
-  it('mentioned user can see related shared cards and own shared todos only', async () => {
+  it('editing shared todo refreshes mentioned assignees and supports multiple mentions', async () => {
+    const updateTodoRes = await request(getHttpApp())
+      .patch(`${baseUrl}/todos/${sharedTodoId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        content: `请 @${memberMentionKey} 和 @${secondMemberMentionKey} 一起确认共享卡片联调`,
+      });
+    expect(updateTodoRes.status).toBe(200);
+
+    const updatedTodoData = getData<{ assignees: Array<{ email: string }> }>(updateTodoRes.body);
+    const assignedEmails = updatedTodoData.assignees.map((item) => item.email.toLowerCase());
+    expect(assignedEmails).toContain(memberEmail.toLowerCase());
+    expect(assignedEmails).toContain(secondMemberEmail.toLowerCase());
+    expect(updatedTodoData.assignees).toHaveLength(2);
+  });
+
+  it('mentioned users can see related shared cards and own shared todos only', async () => {
     const memberCardsRes = await request(getHttpApp())
       .get(`${baseUrl}/cards`)
       .set('Authorization', `Bearer ${memberToken}`);
@@ -153,6 +183,24 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     const sharedTodos = getData<Array<{ id: string; content: string }>>(sharedTodosRes.body);
     expect(sharedTodos).toHaveLength(1);
     expect(sharedTodos[0]?.id).toBe(sharedTodoId);
+
+    const secondMemberCardsRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${secondMemberToken}`);
+    expect(secondMemberCardsRes.status).toBe(200);
+    const secondMemberCards = getData<Array<{ id: string }>>(secondMemberCardsRes.body);
+
+    const secondMemberCardIds = secondMemberCards.map((item) => item.id);
+    expect(secondMemberCardIds).toContain(sharedCardId);
+    expect(secondMemberCardIds).not.toContain(hiddenSharedCardId);
+
+    const secondMemberTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${sharedCardId}/todos`)
+      .set('Authorization', `Bearer ${secondMemberToken}`);
+    expect(secondMemberTodosRes.status).toBe(200);
+    const secondMemberTodos = getData<Array<{ id: string }>>(secondMemberTodosRes.body);
+    expect(secondMemberTodos).toHaveLength(1);
+    expect(secondMemberTodos[0]?.id).toBe(sharedTodoId);
   });
 
   it('shared todo supports progress update by mentioned user', async () => {
@@ -169,5 +217,47 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     const progressEntries = getData<Array<{ content: string }>>(ownerProgressRes.body);
     expect(progressEntries.length).toBeGreaterThan(0);
     expect(progressEntries[0]?.content).toContain('共享待办联调');
+  });
+
+  it('shared card layout is isolated per user', async () => {
+    const ownerLayoutRes = await request(getHttpApp())
+      .patch(`${baseUrl}/cards/${sharedCardId}/layout`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ x: 1, y: 0, w: 6, h: 4 });
+    expect(ownerLayoutRes.status).toBe(200);
+    expect(getData<{ x: number; y: number }>(ownerLayoutRes.body).x).toBe(1);
+
+    const memberLayoutRes = await request(getHttpApp())
+      .patch(`${baseUrl}/cards/${sharedCardId}/layout`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ x: 7, y: 2, w: 5, h: 4 });
+    expect(memberLayoutRes.status).toBe(200);
+    expect(getData<{ x: number; y: number }>(memberLayoutRes.body).x).toBe(7);
+
+    const ownerCardsRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(ownerCardsRes.status).toBe(200);
+    const ownerCard = getData<Array<{ id: string; x: number; y: number }>>(ownerCardsRes.body).find((item) => item.id === sharedCardId);
+    expect(ownerCard?.x).toBe(1);
+    expect(ownerCard?.y).toBe(0);
+
+    const memberCardsRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(memberCardsRes.status).toBe(200);
+    const memberCard = getData<Array<{ id: string; x: number; y: number }>>(memberCardsRes.body).find((item) => item.id === sharedCardId);
+    expect(memberCard?.x).toBe(7);
+    expect(memberCard?.y).toBe(2);
+
+    const secondMemberCardsRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${secondMemberToken}`);
+    expect(secondMemberCardsRes.status).toBe(200);
+    const secondMemberCard = getData<Array<{ id: string; x: number; y: number }>>(secondMemberCardsRes.body).find(
+      (item) => item.id === sharedCardId,
+    );
+    expect(secondMemberCard?.x).toBe(0);
+    expect(secondMemberCard?.y).toBe(0);
   });
 });

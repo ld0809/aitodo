@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Card } from '../database/entities/card.entity';
+import { CardUserLayout } from '../database/entities/card-user-layout.entity';
 import { Tag } from '../database/entities/tag.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
@@ -16,6 +17,8 @@ export class CardsService {
   constructor(
     @InjectRepository(Card)
     private readonly cardRepository: Repository<Card>,
+    @InjectRepository(CardUserLayout)
+    private readonly cardUserLayoutRepository: Repository<CardUserLayout>,
     @InjectRepository(Tag)
     private readonly tagRepository: Repository<Tag>,
     @InjectRepository(User)
@@ -78,12 +81,14 @@ export class CardsService {
       .distinct(true)
       .getMany();
 
-    return cards.map((card) => this.toCardResponse(card));
+    const cardsWithUserLayout = await this.applyUserLayouts(userId, cards);
+    return cardsWithUserLayout.map((card) => this.toCardResponse(card));
   }
 
   async findOne(userId: string, id: string) {
     const card = await this.findAccessibleCardOrThrow(userId, id);
-    return this.toCardResponse(card);
+    const [cardWithUserLayout] = await this.applyUserLayouts(userId, [card]);
+    return this.toCardResponse(cardWithUserLayout ?? card);
   }
 
   async update(userId: string, id: string, dto: UpdateCardDto) {
@@ -148,45 +153,34 @@ export class CardsService {
   }
 
   async updateLayout(userId: string, id: string, dto: UpdateLayoutDto) {
-    const card = await this.findOwnedCardOrThrow(userId, id);
-    card.x = dto.x;
-    card.y = dto.y;
-    card.w = dto.w;
-    card.h = dto.h;
-
-    await this.cardRepository.save(card);
+    await this.findAccessibleCardOrThrow(userId, id);
+    await this.saveUserLayouts(userId, [{ id, x: dto.x, y: dto.y, w: dto.w, h: dto.h }]);
     return this.findOne(userId, id);
   }
 
   async updateDashboardLayout(userId: string, dto: UpdateDashboardLayoutDto) {
-    const cardIds = dto.items.map((item) => item.id);
+    const itemMap = new Map(dto.items.map((item) => [item.id, item]));
+    const cardIds = [...itemMap.keys()];
+    if (cardIds.length === 0) {
+      return this.findAll(userId);
+    }
+    await this.validateDashboardLayoutCards(userId, cardIds);
 
     await this.dataSource.transaction(async (manager) => {
-      const cards = await manager.find(Card, {
-        where: {
-          userId,
-          id: In(cardIds),
-        },
-      });
-
-      if (cards.length !== cardIds.length) {
-        throw new BadRequestException('one or more cards are invalid');
-      }
-
-      const itemMap = new Map(dto.items.map((item) => [item.id, item]));
-      for (const card of cards) {
-        const target = itemMap.get(card.id);
-        if (!target) {
-          continue;
-        }
-
-        card.x = target.x;
-        card.y = target.y;
-        card.w = target.w;
-        card.h = target.h;
-      }
-
-      await manager.save(cards);
+      await this.saveUserLayouts(
+        userId,
+        cardIds.map((cardId) => {
+          const item = itemMap.get(cardId)!;
+          return {
+            id: cardId,
+            x: item.x,
+            y: item.y,
+            w: item.w,
+            h: item.h,
+          };
+        }),
+        manager,
+      );
     });
 
     return this.findAll(userId);
@@ -271,6 +265,37 @@ export class CardsService {
     return card;
   }
 
+  private async validateDashboardLayoutCards(userId: string, cardIds: string[]) {
+    const accessibleCards = await this.cardRepository
+      .createQueryBuilder('card')
+      .where('card.id IN (:...cardIds)', { cardIds })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('card.user_id = :userId', { userId }).orWhere(
+            `
+              card.card_type = :sharedType
+              AND EXISTS (
+                SELECT 1
+                FROM todos visible_todo
+                INNER JOIN todo_assignees visible_assignee
+                  ON visible_assignee.todo_id = visible_todo.id
+                WHERE visible_todo.card_id = card.id
+                  AND visible_todo.deleted_at IS NULL
+                  AND visible_assignee.user_id = :userId
+              )
+            `,
+            { sharedType: 'shared', userId },
+          );
+        }),
+      )
+      .select(['card.id'])
+      .getMany();
+
+    if (accessibleCards.length !== cardIds.length) {
+      throw new BadRequestException('one or more cards are invalid');
+    }
+  }
+
   private validateCardTypeAndPlugin(cardType: 'personal' | 'shared', pluginType: string) {
     if (cardType === 'shared' && pluginType !== 'local_todo') {
       throw new BadRequestException('shared card only supports local_todo plugin');
@@ -300,6 +325,81 @@ export class CardsService {
 
     const userByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
     return normalizedEmails.map((email) => userByEmail.get(email)!);
+  }
+
+  private async applyUserLayouts(userId: string, cards: Card[]) {
+    if (cards.length === 0) {
+      return cards;
+    }
+
+    const cardIds = cards.map((card) => card.id);
+    const layouts = await this.cardUserLayoutRepository.find({
+      where: {
+        userId,
+        cardId: In(cardIds),
+      },
+    });
+    if (layouts.length === 0) {
+      return cards;
+    }
+
+    const layoutByCardId = new Map(layouts.map((layout) => [layout.cardId, layout]));
+    for (const card of cards) {
+      const layout = layoutByCardId.get(card.id);
+      if (!layout) {
+        continue;
+      }
+      card.x = layout.x;
+      card.y = layout.y;
+      card.w = layout.w;
+      card.h = layout.h;
+    }
+
+    return cards;
+  }
+
+  private async saveUserLayouts(
+    userId: string,
+    items: Array<{ id: string; x: number; y: number; w: number; h: number }>,
+    manager?: EntityManager,
+  ) {
+    if (items.length === 0) {
+      return;
+    }
+
+    const itemMap = new Map(items.map((item) => [item.id, item]));
+    const cardIds = [...itemMap.keys()];
+    const targetManager = manager ?? this.dataSource.manager;
+    const existingLayouts = await targetManager.find(CardUserLayout, {
+      where: {
+        userId,
+        cardId: In(cardIds),
+      },
+    });
+    const existingByCardId = new Map(existingLayouts.map((layout) => [layout.cardId, layout]));
+
+    const layoutsToSave = cardIds.map((cardId) => {
+      const item = itemMap.get(cardId)!;
+      const existingLayout = existingByCardId.get(cardId);
+      if (existingLayout) {
+        existingLayout.x = item.x;
+        existingLayout.y = item.y;
+        existingLayout.w = item.w;
+        existingLayout.h = item.h;
+        return existingLayout;
+      }
+
+      return targetManager.create(CardUserLayout, {
+        userId,
+        cardId,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+      });
+    });
+
+    await targetManager.save(CardUserLayout, layoutsToSave);
   }
 
   private toCardResponse(card: Card) {

@@ -19,6 +19,7 @@ import { User } from './database/entities/user.entity';
 import { TapdConfig } from './database/entities/tapd-config.entity';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
+import { CardUserLayout } from './database/entities/card-user-layout.entity';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -36,7 +37,7 @@ function resolveDatabasePath() {
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: resolveDatabasePath(),
-      entities: [User, EmailCode, Tag, Todo, TodoProgressEntry, Card, TapdConfig],
+      entities: [User, EmailCode, Tag, Todo, TodoProgressEntry, Card, TapdConfig, CardUserLayout],
       synchronize: true,
       logging: false,
     }),

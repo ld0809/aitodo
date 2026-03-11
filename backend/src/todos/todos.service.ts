@@ -160,6 +160,7 @@ export class TodosService {
 
     if (dto.content !== undefined) {
       todo.content = dto.content;
+      await this.refreshSharedTodoAssignees(todo);
     }
     if (dto.dueAt !== undefined) {
       todo.dueAt = new Date(dto.dueAt);
@@ -289,6 +290,24 @@ export class TodosService {
     }
 
     return participants.filter((participant) => mentionTokens.has(this.buildMentionKey(participant).toLowerCase()));
+  }
+
+  private async refreshSharedTodoAssignees(todo: Todo) {
+    if (!todo.cardId) {
+      return;
+    }
+
+    const card = await this.cardRepository.findOne({
+      where: { id: todo.cardId },
+      relations: {
+        participants: true,
+      },
+    });
+    if (!card || card.cardType !== 'shared') {
+      return;
+    }
+
+    todo.assignees = this.resolveMentionedParticipants(todo.content, card.participants ?? []);
   }
 
   private extractMentionTokens(content: string) {
