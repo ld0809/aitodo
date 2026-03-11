@@ -5,6 +5,17 @@ import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import './AuthPages.css';
 
+function shouldRedirectToVerify(err: unknown) {
+  if (!axios.isAxiosError(err)) {
+    return false;
+  }
+
+  const payload = err.response?.data as { message?: string | string[] } | undefined;
+  const rawMessage = payload?.message;
+  const message = Array.isArray(rawMessage) ? rawMessage.join(' ') : rawMessage ?? '';
+  return err.response?.status === 403 && message.includes('email not verified');
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -23,6 +34,28 @@ export function LoginPage() {
       setAuth(response.data.user, response.data.accessToken);
       navigate('/dashboard');
     } catch (err: unknown) {
+      if (shouldRedirectToVerify(err)) {
+        let autoSent = false;
+        let debugCode: string | undefined;
+        try {
+          const resendResponse = await authApi.sendEmailCode(email);
+          autoSent = true;
+          debugCode = resendResponse.data.debugCode;
+        } catch {
+          autoSent = false;
+        }
+
+        navigate('/verify', {
+          state: {
+            email,
+            from: 'login',
+            autoSent,
+            debugCode,
+          },
+        });
+        return;
+      }
+
       if (axios.isAxiosError(err)) {
         setError((err.response?.data as { message?: string } | undefined)?.message || '登录失败，请检查邮箱和密码');
       } else {

@@ -54,6 +54,9 @@ export class AuthService {
     await this.emailCodeRepository.save(emailCode);
 
     const result = this.toSafeUser(savedUser);
+    if (!this.shouldExposeVerifyCode()) {
+      return result;
+    }
 
     return {
       ...result,
@@ -81,9 +84,16 @@ export class AuthService {
 
     const savedCode = await this.emailCodeRepository.save(emailCode);
 
-    return {
+    const result = {
       email: savedCode.email,
       expiresAt: savedCode.expiresAt,
+    };
+    if (!this.shouldExposeVerifyCode()) {
+      return result;
+    }
+
+    return {
+      ...result,
       debugCode: savedCode.code,
     };
   }
@@ -163,5 +173,19 @@ export class AuthService {
 
   private generateVerificationCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  private shouldExposeVerifyCode() {
+    const raw = process.env.AUTH_EXPOSE_VERIFY_CODE?.trim().toLowerCase();
+    if (!raw) {
+      return true;
+    }
+    if (raw === 'true' || raw === '1') {
+      return true;
+    }
+    if (raw === 'false' || raw === '0') {
+      return false;
+    }
+    return true;
   }
 }

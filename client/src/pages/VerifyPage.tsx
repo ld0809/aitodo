@@ -7,12 +7,21 @@ import './AuthPages.css';
 export function VerifyPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const email = (location.state as { email?: string })?.email || '';
+  const locationState = (location.state as {
+    email?: string;
+    from?: 'register' | 'login';
+    autoSent?: boolean;
+    debugCode?: string;
+  } | undefined) ?? {};
+  const email = locationState.email || '';
+  const fromLogin = locationState.from === 'login';
+  const autoSent = locationState.autoSent === true;
   
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [debugCode, setDebugCode] = useState<string | null>(locationState.debugCode || null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -81,7 +90,8 @@ export function VerifyPage() {
   const handleResend = async () => {
     setResending(true);
     try {
-      await authApi.sendEmailCode(email);
+      const response = await authApi.sendEmailCode(email);
+      setDebugCode(response.data.debugCode || null);
       setError('');
       alert('验证码已重新发送');
     } catch (err: unknown) {
@@ -118,6 +128,34 @@ export function VerifyPage() {
         </div>
         <h1>验证邮箱</h1>
         <p className="sub">我们已发送验证码到 {email}</p>
+        {fromLogin && (
+          <div
+            style={{
+              background: '#eef2ff',
+              color: '#3730a3',
+              padding: '10px 12px',
+              borderRadius: '8px',
+              marginBottom: '12px',
+              fontSize: '13px',
+            }}
+          >
+            {autoSent ? '邮箱未验证，已自动重新发送验证码。' : '邮箱未验证，请先完成验证码验证。'}
+          </div>
+        )}
+        {debugCode && (
+          <div
+            style={{
+              background: '#fef3c7',
+              color: '#92400e',
+              padding: '10px 12px',
+              borderRadius: '8px',
+              marginBottom: '12px',
+              fontSize: '13px',
+            }}
+          >
+            当前验证码：<strong>{debugCode}</strong>
+          </div>
+        )}
         
         {error && <div className="error-message">{error}</div>}
         

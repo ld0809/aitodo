@@ -23,9 +23,6 @@ export function RegisterPage() {
   const [debugCode, setDebugCode] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // 开发环境标志
-  const isDev = import.meta.env.DEV;
-
   useEffect(() => {
     if (step === 'verify' && inputRefs.current[0]) {
       inputRefs.current[0].focus();
@@ -90,18 +87,18 @@ export function RegisterPage() {
     try {
       // Register first
       const registerResponse = await authApi.register(email, password);
-      
-      // Check for debug code in development environment
+
       const responseData = registerResponse.data;
-      if (isDev && responseData.debugVerificationCode) {
-        const debug = responseData.debugVerificationCode;
-        setDebugCode(debug);
-        console.log('[开发环境] 验证码:', debug);
+      if (responseData.debugVerificationCode) {
+        setDebugCode(responseData.debugVerificationCode);
       }
-      
+
       // Send verification code
-      await authApi.sendEmailCode(email);
-      
+      const sendCodeResponse = await authApi.sendEmailCode(email);
+      if (sendCodeResponse.data.debugCode) {
+        setDebugCode(sendCodeResponse.data.debugCode);
+      }
+
       // Switch to verification step
       setStep('verify');
     } catch (err: unknown) {
@@ -145,7 +142,7 @@ export function RegisterPage() {
     try {
       const resendResponse = await authApi.sendEmailCode(email);
       setError('');
-      if (isDev && resendResponse.data.debugCode) {
+      if (resendResponse.data.debugCode) {
         setDebugCode(resendResponse.data.debugCode);
       }
       alert('验证码已重新发送');
@@ -183,8 +180,7 @@ export function RegisterPage() {
           <h1>验证邮箱</h1>
           <p className="sub">验证码已发送至 {email}</p>
           
-          {/* 开发环境提示 */}
-          {isDev && debugCode && (
+          {debugCode && (
             <div className="debug-hint" style={{
               background: '#fef3c7',
               color: '#92400e',
@@ -194,7 +190,7 @@ export function RegisterPage() {
               fontSize: '14px',
               textAlign: 'center'
             }}>
-              🔧 开发环境提示：验证码为 <strong>{debugCode}</strong>
+              当前验证码：<strong>{debugCode}</strong>
             </div>
           )}
           
