@@ -43,33 +43,22 @@ export class AuthService {
 
     const savedUser = await this.userRepository.save(user);
 
-    // Generate verification code in development mode
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-    let verificationCode: string | undefined;
-    
-    if (isDev) {
-      verificationCode = this.generateVerificationCode();
-      const emailCode = this.emailCodeRepository.create({
-        userId: savedUser.id,
-        email: savedUser.email,
-        code: verificationCode,
-        purpose: 'verify_email',
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      });
-      await this.emailCodeRepository.save(emailCode);
-    }
+    const verificationCode = this.generateVerificationCode();
+    const emailCode = this.emailCodeRepository.create({
+      userId: savedUser.id,
+      email: savedUser.email,
+      code: verificationCode,
+      purpose: 'verify_email',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    });
+    await this.emailCodeRepository.save(emailCode);
 
     const result = this.toSafeUser(savedUser);
-    
-    // Return verification code in development mode
-    if (isDev && verificationCode) {
-      return {
-        ...result,
-        debugVerificationCode: verificationCode,
-      };
-    }
-    
-    return result;
+
+    return {
+      ...result,
+      debugVerificationCode: verificationCode,
+    };
   }
 
   async sendEmailCode(dto: SendEmailCodeDto) {
@@ -92,12 +81,10 @@ export class AuthService {
 
     const savedCode = await this.emailCodeRepository.save(emailCode);
 
-    // In development mode, return the verification code directly
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
     return {
       email: savedCode.email,
       expiresAt: savedCode.expiresAt,
-      ...(isDev && { debugCode: savedCode.code }),
+      debugCode: savedCode.code,
     };
   }
 
