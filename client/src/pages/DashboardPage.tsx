@@ -566,6 +566,7 @@ export function DashboardPage() {
             ...prev,
             [card.id]: '',
           }));
+          setFocusedQuickInputCardId((prev) => (prev === card.id ? null : prev));
         },
         onError: (error: unknown) => {
           alert(getErrorMessage(error, '快捷创建待办失败'));
@@ -879,6 +880,7 @@ export function DashboardPage() {
                           e.preventDefault();
                           e.stopPropagation();
                           handleQuickCreateTodo(card);
+                          e.currentTarget.blur();
                           return;
                         }
                         if (e.key === 'Escape') {
