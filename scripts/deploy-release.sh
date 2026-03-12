@@ -168,6 +168,62 @@ if [[ -n "$PREV_RELEASE" ]]; then
   if [[ -f "$PREV_RELEASE/client/.env" ]]; then cp "$PREV_RELEASE/client/.env" "$NEW_RELEASE/client/.env"; fi
 fi
 
+read_package_version() {
+  local package_json="$1"
+  if [[ ! -f "$package_json" ]]; then
+    echo ""
+    return
+  fi
+
+  node -e '
+    const fs = require("fs");
+    const packageJson = process.argv[1];
+    try {
+      const parsed = JSON.parse(fs.readFileSync(packageJson, "utf8"));
+      process.stdout.write(String(parsed.version ?? ""));
+    } catch {
+      process.stdout.write("");
+    }
+  ' "$package_json"
+}
+
+reuse_node_modules_if_same_version() {
+  local app_name="$1"
+  local prev_app_dir="$PREV_RELEASE/$app_name"
+  local new_app_dir="$NEW_RELEASE/$app_name"
+  local prev_version
+  local new_version
+
+  if [[ ! -d "$prev_app_dir/node_modules" ]]; then
+    return 1
+  fi
+
+  prev_version="$(read_package_version "$prev_app_dir/package.json")"
+  new_version="$(read_package_version "$new_app_dir/package.json")"
+
+  if [[ -z "$prev_version" || -z "$new_version" ]]; then
+    return 1
+  fi
+  if [[ "$prev_version" != "$new_version" ]]; then
+    return 1
+  fi
+
+  echo "[deploy] reuse $app_name node_modules (version=$new_version)"
+  cp -a "$prev_app_dir/node_modules" "$new_app_dir/node_modules"
+}
+
+BACKEND_NODE_MODULES_REUSED=0
+CLIENT_NODE_MODULES_REUSED=0
+
+if [[ -n "$PREV_RELEASE" && -d "$PREV_RELEASE" ]]; then
+  if reuse_node_modules_if_same_version backend; then
+    BACKEND_NODE_MODULES_REUSED=1
+  fi
+  if reuse_node_modules_if_same_version client; then
+    CLIENT_NODE_MODULES_REUSED=1
+  fi
+fi
+
 if [[ -x "$NEW_RELEASE/backend/scripts/backup-db.sh" && -f "$REMOTE_DB_PATH" ]]; then
   echo "[deploy] backup database before migration"
   DATABASE_PATH="$REMOTE_DB_PATH" BACKUP_DIR="$APP_ROOT/backend/data/backups" "$NEW_RELEASE/backend/scripts/backup-db.sh"
@@ -175,7 +231,11 @@ fi
 
 echo "[deploy] build backend"
 cd "$NEW_RELEASE/backend"
-npm ci --no-audit --no-fund
+if [[ "$BACKEND_NODE_MODULES_REUSED" -eq 1 ]]; then
+  echo "[deploy] skip backend npm ci (reused node_modules)"
+else
+  npm ci --no-audit --no-fund
+fi
 npm run build
 
 echo "[deploy] apply sql migrations"
@@ -183,7 +243,11 @@ node "$NEW_RELEASE/backend/scripts/apply-sql-migrations.js" --db "$REMOTE_DB_PAT
 
 echo "[deploy] build client"
 cd "$NEW_RELEASE/client"
-npm ci --no-audit --no-fund
+if [[ "$CLIENT_NODE_MODULES_REUSED" -eq 1 ]]; then
+  echo "[deploy] skip client npm ci (reused node_modules)"
+else
+  npm ci --no-audit --no-fund
+fi
 npm run build
 
 ln -sfn "$NEW_RELEASE" "$CURRENT_LINK"
