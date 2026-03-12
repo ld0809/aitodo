@@ -57,6 +57,17 @@ function toRangeBoundaryIso(dateText: string, boundary: 'start' | 'end'): string
   return date.toISOString();
 }
 
+function toValidTimestamp(value?: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  return timestamp;
+}
+
 interface GridLayoutItem {
   i: string;
   x: number;
@@ -425,9 +436,12 @@ export function DashboardPage() {
     if (editingTodo) {
       updateTodoMutation.mutate({ id: editingTodo.id, data: data as UpdateTodoDto });
     } else {
+      const createData = data as CreateTodoDto;
+      const normalizedTagIds = (Array.isArray(createData.tagIds) ? createData.tagIds : []).filter(Boolean);
       const createPayload: CreateTodoDto = {
-        ...(data as CreateTodoDto),
-        cardId: activeTodoCard?.id,
+        ...createData,
+        tagIds: normalizedTagIds.length > 0 ? normalizedTagIds : undefined,
+        cardId: activeTodoCard && normalizedTagIds.length === 0 ? activeTodoCard.id : undefined,
       };
       createTodoMutation.mutate(createPayload);
     }
@@ -553,12 +567,13 @@ export function DashboardPage() {
     }
 
     const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
+    const normalizedTagIds = cardTagIds.filter(Boolean);
     setQuickCreatingCardId(card.id);
     createTodoMutation.mutate(
       {
         content,
-        cardId: card.id,
-        tagIds: cardTagIds,
+        tagIds: normalizedTagIds.length > 0 ? normalizedTagIds : undefined,
+        cardId: normalizedTagIds.length === 0 ? card.id : undefined,
       },
       {
         onSuccess: () => {
@@ -759,11 +774,16 @@ export function DashboardPage() {
     if (card.pluginType === 'tapd' || card.cardType === 'shared') {
       return remoteCardTodos[card.id] || [];
     }
-    if (!card.tags?.length) return todos;
-    const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((t) => t.id);
-    return todos.filter((todo) =>
-      (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.includes(tag.id))
-    );
+
+    const cardTagIds = new Set((Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id));
+    const relatedByCard = (Array.isArray(todos) ? todos : []).filter((todo) => todo.cardId === card.id);
+    const relatedByTags = cardTagIds.size === 0
+      ? []
+      : (Array.isArray(todos) ? todos : []).filter((todo) =>
+          (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.has(tag.id)),
+        );
+
+    return Array.from(new Map([...relatedByCard, ...relatedByTags].map((todo) => [todo.id, todo])).values());
   };
 
   const isCompletedTodo = (todo: Todo) => todo.status === 'done' || todo.status === 'completed';
@@ -838,8 +858,41 @@ export function DashboardPage() {
             <div key={card.id} className="grid-card-inner">
               {(() => {
                 const cardTodos = getTodosForCard(card);
+                const sortField = card.sortBy;
+                const sortOrder = card.sortOrder === 'asc' ? 1 : -1;
                 const sortedCardTodos = [...(Array.isArray(cardTodos) ? cardTodos : [])].sort(
-                  (left, right) => Number(isCompletedTodo(left)) - Number(isCompletedTodo(right)),
+                  (left, right) => {
+                    const completedDiff = Number(isCompletedTodo(left)) - Number(isCompletedTodo(right));
+                    if (completedDiff !== 0) {
+                      return completedDiff;
+                    }
+
+                    const getSortValue = (todo: Todo) => {
+                      if (sortField === 'due_at') {
+                        return toValidTimestamp(todo.dueAt);
+                      }
+                      if (sortField === 'execute_at') {
+                        return toValidTimestamp(todo.executeAt);
+                      }
+                      return toValidTimestamp(todo.createdAt);
+                    };
+
+                    const leftValue = getSortValue(left);
+                    const rightValue = getSortValue(right);
+
+                    if (leftValue === rightValue) {
+                      const leftCreated = toValidTimestamp(left.createdAt) ?? 0;
+                      const rightCreated = toValidTimestamp(right.createdAt) ?? 0;
+                      return (leftCreated - rightCreated) * sortOrder;
+                    }
+                    if (leftValue === null) {
+                      return 1;
+                    }
+                    if (rightValue === null) {
+                      return -1;
+                    }
+                    return (leftValue - rightValue) * sortOrder;
+                  },
                 );
                 const showCompleted = showCompletedByCard[card.id] ?? true;
                 const visibleCardTodos = showCompleted

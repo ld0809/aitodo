@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { Todo } from '../database/entities/todo.entity';
 import { DataSourcePlugin, PluginFetchContext } from './interfaces/data-source-plugin.interface';
 import { CardTodoView, PluginItem } from './types/plugin-item.type';
@@ -38,7 +38,15 @@ export class LocalTodoPlugin implements DataSourcePlugin {
       queryBuilder.where('todo.user_id = :userId', { userId: ctx.userId });
 
       if (tagIds.length > 0) {
-        queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds });
+        queryBuilder.andWhere(
+          new Brackets((qb) => {
+            qb.where('tag.id IN (:...tagIds)', { tagIds }).orWhere('todo.card_id = :cardId', {
+              cardId: ctx.card.id,
+            });
+          }),
+        );
+      } else {
+        queryBuilder.andWhere('todo.card_id = :cardId', { cardId: ctx.card.id });
       }
     }
 

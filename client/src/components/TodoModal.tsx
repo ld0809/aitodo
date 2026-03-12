@@ -255,7 +255,6 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
       dueAt: dueAt || undefined,
       executeAt: executeAt || undefined,
       tagIds: selectedTagIds,
-      cardId: card?.id,
     };
     onSave(data);
   };
