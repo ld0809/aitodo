@@ -19,6 +19,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function parseWorkspaceIds(input: string): string[] {
+  return [...new Set(input.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean))];
+}
+
 type CardMode = 'personal' | 'shared' | 'tapd';
 
 export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: CardModalProps) {
@@ -35,10 +39,11 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
   const [participantEmailDraft, setParticipantEmailDraft] = useState('');
   const [copyFromCardId, setCopyFromCardId] = useState('');
 
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceInput, setWorkspaceInput] = useState('');
   const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
   const [iterationId, setIterationId] = useState('');
   const [ownerIds, setOwnerIds] = useState<string[]>([]);
+  const [ownerNames, setOwnerNames] = useState<string[]>([]);
   const [tapdUsers, setTapdUsers] = useState<TapdUser[]>([]);
   const [userKeyword, setUserKeyword] = useState('');
 
@@ -70,25 +75,32 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
           const rawConfig = typeof card.pluginConfigJson === 'string' ? JSON.parse(card.pluginConfigJson) : card.pluginConfigJson;
           const config = rawConfig as {
             workspaceId?: string;
+            workspaceIds?: string[];
             contentType?: 'all' | 'requirements' | 'bugs';
             iterationId?: string;
             ownerIds?: string[];
+            owners?: string[];
           };
-          setWorkspaceId(config.workspaceId || '');
+          const workspaceIds = Array.isArray(config.workspaceIds) ? config.workspaceIds : [];
+          const workspaceText = workspaceIds.length > 0 ? workspaceIds.join(',') : (config.workspaceId || '');
+          setWorkspaceInput(workspaceText);
           setContentType(config.contentType || 'all');
           setIterationId(config.iterationId || '');
           setOwnerIds(Array.isArray(config.ownerIds) ? config.ownerIds : []);
+          setOwnerNames(Array.isArray(config.owners) ? config.owners : []);
         } catch {
-          setWorkspaceId('');
+          setWorkspaceInput('');
           setContentType('all');
           setIterationId('');
           setOwnerIds([]);
+          setOwnerNames([]);
         }
       } else {
-        setWorkspaceId('');
+        setWorkspaceInput('');
         setContentType('all');
         setIterationId('');
         setOwnerIds([]);
+        setOwnerNames([]);
       }
       return;
     }
@@ -102,10 +114,11 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
     setParticipantEmails([]);
     setParticipantEmailDraft('');
     setCopyFromCardId('');
-    setWorkspaceId('');
+    setWorkspaceInput('');
     setContentType('all');
     setIterationId('');
     setOwnerIds([]);
+    setOwnerNames([]);
     setTapdUsers([]);
     setUserKeyword('');
   }, [card]);
@@ -116,16 +129,20 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
       return;
     }
 
-    const projectId = workspaceId.trim();
-    if (!projectId) {
+    const workspaceIds = parseWorkspaceIds(workspaceInput);
+    if (workspaceIds.length === 0) {
       setTapdUsers([]);
       return;
     }
 
-    getUsers(projectId)
-      .then((users) => setTapdUsers(Array.isArray(users) ? users : []))
+    Promise.all(workspaceIds.map((workspaceId) => getUsers(workspaceId)))
+      .then((usersByWorkspace) => {
+        const merged = usersByWorkspace.flatMap((users) => (Array.isArray(users) ? users : []));
+        const deduped = [...new Map(merged.map((user) => [user.id, user])).values()];
+        setTapdUsers(deduped);
+      })
       .catch(() => setTapdUsers([]));
-  }, [isTapdCard, workspaceId]);
+  }, [isTapdCard, workspaceInput]);
 
   const filteredUsers = useMemo(() => {
     const keyword = userKeyword.trim().toLowerCase();
@@ -140,6 +157,32 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
     () => tapdUsers.filter((user) => ownerIds.includes(user.id)),
     [tapdUsers, ownerIds],
   );
+
+  useEffect(() => {
+    if (ownerIds.length > 0 || ownerNames.length === 0 || tapdUsers.length === 0) {
+      return;
+    }
+
+    const ownerSet = new Set(
+      ownerNames
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (ownerSet.size === 0) {
+      return;
+    }
+
+    const matchedIds = tapdUsers
+      .filter((user) =>
+        ownerSet.has((user.name || user.nickname || user.id || '').trim().toLowerCase()) ||
+        ownerSet.has((user.id || '').trim().toLowerCase()),
+      )
+      .map((user) => user.id);
+
+    if (matchedIds.length > 0) {
+      setOwnerIds([...new Set(matchedIds)]);
+    }
+  }, [tapdUsers, ownerIds, ownerNames]);
 
   const copySourceCards = useMemo(
     () =>
@@ -207,11 +250,17 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
 
     let pluginConfig: Record<string, unknown> | undefined;
     if (pluginType === 'tapd') {
+      const workspaceIds = parseWorkspaceIds(workspaceInput);
+      const owners = selectedUsers
+        .map((user) => (user.name || user.nickname || user.id || '').trim())
+        .filter(Boolean);
       pluginConfig = {
-        workspaceId: workspaceId.trim(),
+        workspaceId: workspaceIds[0],
+        workspaceIds,
         contentType,
         iterationId: iterationId.trim() || undefined,
         ownerIds,
+        owners: [...new Set(owners)],
       };
     }
 
@@ -314,13 +363,13 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
               <>
                 <div className="mb">
                   <label>
-                    Workspace ID <span style={{ color: '#999' }}>(必填)</span>
+                    Workspace ID <span style={{ color: '#999' }}>(必填，可多个)</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="例如: 54330609"
-                    value={workspaceId}
-                    onChange={(e) => setWorkspaceId(e.target.value)}
+                    placeholder="例如: 54330609,54330610"
+                    value={workspaceInput}
+                    onChange={(e) => setWorkspaceInput(e.target.value)}
                     required={isTapdCard}
                   />
                 </div>

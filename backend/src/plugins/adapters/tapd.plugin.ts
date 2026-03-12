@@ -8,7 +8,8 @@ import { TapdService } from './tapd.service';
 import { TapdConfig as TapdConfigEntity } from '../../database/entities/tapd-config.entity';
 
 export interface TapdPluginConfig {
-  workspaceId: string;
+  workspaceId?: string;
+  workspaceIds?: string[];
 }
 
 export interface TapdFetchOptions {
@@ -17,8 +18,31 @@ export interface TapdFetchOptions {
   iterationId?: string;
   bugTitle?: string;
   versionId?: string;
+  owners?: string[];
   ownerIds?: string[];
   status?: string;
+}
+
+function parseWorkspaceIds(raw?: string): string[] {
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(/[\s,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function dedupeWorkspaceIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.map((item) => item.trim()).filter(Boolean)));
+}
+
+function resolveWorkspaceIds(config: TapdPluginConfig): string[] {
+  const fromList = Array.isArray(config.workspaceIds)
+    ? config.workspaceIds.flatMap((item) => parseWorkspaceIds(String(item || '')))
+    : [];
+  const fromSingle = parseWorkspaceIds(config.workspaceId);
+  return dedupeWorkspaceIds([...fromList, ...fromSingle]);
 }
 
 
@@ -76,12 +100,15 @@ function mapTapdStatusToDisplayLabel(status: string, statusLabelMap?: Record<str
 }
 
 function mapTapdStatusToPluginStatus(status: string): 'todo' | 'done' | 'completed' {
-  const lowerStatus = status?.toLowerCase() || '';
-  if (lowerStatus === 'done' || lowerStatus === 'completed' || lowerStatus === 'closed') {
+  const normalizedStatus = String(status || '').trim().toLowerCase();
+  const donePattern = /(已完成|已关闭|已拒绝|拒绝|已解决|已修复|已验证|已确认|qa已确认|bugqa已确认|qa确认|已验收|验证通过|延期|postponed|resolved|rejected|closed|done|completed|abandoned|fixed|verified)/i;
+  const doingPattern = /(开发中|处理中|测试中|进行中|in_progress|inprogress|ongoing|developing|processing|testing)/i;
+
+  if (donePattern.test(status) || donePattern.test(normalizedStatus)) {
     return 'completed';
   }
-  if (lowerStatus === 'in_progress' || lowerStatus === 'ongoing') {
-    return 'done';
+  if (doingPattern.test(status) || doingPattern.test(normalizedStatus)) {
+    return 'todo';
   }
   return 'todo';
 }
@@ -98,8 +125,8 @@ export class TapdPlugin implements DataSourcePlugin {
 
   async validateConfig(config: unknown): Promise<void> {
     const tapdConfig = config as TapdPluginConfig;
-    if (!tapdConfig.workspaceId) {
-      throw new Error('Invalid TAPD configuration: workspaceId is required');
+    if (resolveWorkspaceIds(tapdConfig).length === 0) {
+      throw new Error('Invalid TAPD configuration: workspaceId or workspaceIds is required');
     }
   }
 
@@ -119,60 +146,73 @@ export class TapdPlugin implements DataSourcePlugin {
     }
     const config = ctx.config as TapdPluginConfig;
     const options = ctx.config as TapdFetchOptions;
+    const workspaceIds = resolveWorkspaceIds(config);
     const items: PluginItem[] = [];
 
-    const projectId = options.projectId || config.workspaceId;
-    console.log('[TAPD Plugin] projectId:', projectId, 'contentType:', options.contentType);
+    console.log('[TAPD Plugin] workspaceIds:', workspaceIds, 'contentType:', options.contentType);
 
-    // Fetch requirements if projectId is specified
-    if (projectId) {
-      const contentType = options.contentType || 'all';
-
-      if (contentType === 'all' || contentType === 'requirements') {
-        console.log('[TAPD Plugin] Fetching requirements...');
-        const statusLabelMap = await this.tapdService.getStoryStatusLabelMap(config.workspaceId);
-        const requirements = await this.tapdService.fetchRequirements({
-          workspaceId: config.workspaceId,
-          projectId,
-          iterationId: options.iterationId,
-          ownerIds: options.ownerIds,
-          status: options.status,
-        });
-        console.log('[TAPD Plugin] Requirements fetched:', requirements.length, 'items');
-
-        for (const req of requirements) {
-          items.push(this.mapRequirementToPluginItem(req, statusLabelMap));
-        }
-      }
-
-      if (contentType === 'all' || contentType === 'bugs') {
-        console.log('[TAPD Plugin] Fetching bugs...');
-        const bugs = await this.tapdService.fetchBugs({
-          workspaceId: config.workspaceId,
-          projectId,
-          title: options.bugTitle,
-          versionId: options.versionId,
-          ownerIds: options.ownerIds,
-          status: options.status,
-        });
-        console.log('[TAPD Plugin] Bugs fetched:', bugs.length, 'items');
-
-        for (const bug of bugs) {
-          items.push(this.mapBugToPluginItem(bug));
-        }
-      }
+    if (workspaceIds.length === 0) {
+      return [];
     }
+
+    const contentType = options.contentType || 'all';
+    const workspaceItems = await Promise.all(
+      workspaceIds.map(async (workspaceId) => {
+        const projectId = options.projectId || workspaceId;
+        const currentItems: PluginItem[] = [];
+
+        if (contentType === 'all' || contentType === 'requirements') {
+          console.log('[TAPD Plugin] Fetching requirements...', { workspaceId, projectId });
+          const statusLabelMap = await this.tapdService.getStoryStatusLabelMap(workspaceId);
+          const requirements = await this.tapdService.fetchRequirements({
+            workspaceId,
+            projectId,
+            iterationId: options.iterationId,
+            owners: options.owners,
+            ownerIds: options.ownerIds,
+            status: options.status,
+          });
+          console.log('[TAPD Plugin] Requirements fetched:', requirements.length, 'items, workspaceId:', workspaceId);
+
+          for (const req of requirements) {
+            currentItems.push(this.mapRequirementToPluginItem(req, statusLabelMap, workspaceId));
+          }
+        }
+
+        if (contentType === 'all' || contentType === 'bugs') {
+          console.log('[TAPD Plugin] Fetching bugs...', { workspaceId, projectId });
+          const bugStatusLabelMap = await this.tapdService.getBugStatusLabelMap(workspaceId);
+          const bugs = await this.tapdService.fetchBugs({
+            workspaceId,
+            projectId,
+            title: options.bugTitle,
+            versionId: options.versionId,
+            owners: options.owners,
+            ownerIds: options.ownerIds,
+            status: options.status,
+          });
+          console.log('[TAPD Plugin] Bugs fetched:', bugs.length, 'items, workspaceId:', workspaceId);
+
+          for (const bug of bugs) {
+            currentItems.push(this.mapBugToPluginItem(bug, bugStatusLabelMap, workspaceId));
+          }
+        }
+
+        return currentItems;
+      }),
+    );
+    items.push(...workspaceItems.flat());
 
     console.log('[TAPD Plugin] Total items returned:', items.length);
     return items;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapRequirementToPluginItem(req: any, statusLabelMap?: Record<string, string>): PluginItem {
+  private mapRequirementToPluginItem(req: any, statusLabelMap?: Record<string, string>, workspaceId?: string): PluginItem {
     const statusLabel = mapTapdStatusToDisplayLabel(req.status, statusLabelMap);
     const title = sanitizeText(req.name);
     return {
-      id: req.id,
+      id: workspaceId ? `${workspaceId}:${req.id}` : req.id,
       content: sanitizeText(`[${statusLabel}] ${title}`),
       dueAt: null,
       executeAt: null,
@@ -185,10 +225,12 @@ export class TapdPlugin implements DataSourcePlugin {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapBugToPluginItem(bug: any): PluginItem {
+  private mapBugToPluginItem(bug: any, statusLabelMap?: Record<string, string>, workspaceId?: string): PluginItem {
+    const statusLabel = mapTapdStatusToDisplayLabel(bug.status, statusLabelMap);
+    const title = sanitizeText(bug.title);
     return {
-      id: bug.id,
-      content: sanitizeText(`[BUG] ${bug.title}`),
+      id: workspaceId ? `${workspaceId}:${bug.id}` : bug.id,
+      content: sanitizeText(`[${statusLabel}] ${title}`),
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(bug.status),

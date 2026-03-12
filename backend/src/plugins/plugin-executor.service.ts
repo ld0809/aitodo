@@ -22,7 +22,8 @@ export class PluginExecutor {
       });
 
       const sortedItems = plugin.sortItems(items, card.sortBy, card.sortOrder);
-      return plugin.mapToCardView(sortedItems).slice(0, 20);
+      const maxItems = card.pluginType === 'tapd' ? 200 : 20;
+      return plugin.mapToCardView(sortedItems).slice(0, maxItems);
     } catch (error) {
       console.error('[PluginExecutor] Error fetching card todos:', error);
       throw error;

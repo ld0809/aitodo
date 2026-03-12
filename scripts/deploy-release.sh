@@ -238,6 +238,8 @@ else
 fi
 npm run build
 
+echo "[deploy] reminder: if schema changed, generate+commit local migration SQL before deploy"
+
 echo "[deploy] apply sql migrations"
 node "$NEW_RELEASE/backend/scripts/apply-sql-migrations.js" --db "$REMOTE_DB_PATH" --dir "$NEW_RELEASE/backend/migrations/sql"
 

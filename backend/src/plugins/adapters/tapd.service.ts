@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import axios from 'axios';
 
 export interface TapdRequirement {
@@ -57,6 +57,7 @@ export interface FetchRequirementsParams {
   workspaceId: string;
   projectId?: string;
   iterationId?: string;
+  owners?: string[];
   ownerIds?: string[];
   status?: string;
 }
@@ -67,16 +68,22 @@ export interface FetchBugsParams {
   iterationId?: string;
   title?: string;
   versionId?: string;
+  owners?: string[];
   ownerIds?: string[];
   status?: string;
 }
 
 @Injectable()
 export class TapdService {
+  private readonly logger = new Logger(TapdService.name);
+  private readonly pageSize = 100;
+  private readonly maxPages = 20;
   private client: any = null;
   private config: { apiUrl: string; apiUser: string; workspaceId: string } | null = null;
   private doneStoryStatusesCache = new Map<string, Set<string>>();
+  private doneBugStatusesCache = new Map<string, Set<string>>();
   private storyStatusOptionsCache = new Map<string, Record<string, string>>();
+  private bugStatusOptionsCache = new Map<string, Record<string, string>>();
   private workspaceUserAccountMapCache = new Map<string, Map<string, string>>();
 
   private async getWorkspaceUserAccountMap(workspaceId: string): Promise<Map<string, string>> {
@@ -136,7 +143,11 @@ export class TapdService {
       return accountMap.get(owner) || accountMap.get(owner.toLowerCase()) || owner;
     });
 
-    return Array.from(new Set(resolved));
+    const uniqueResolved = Array.from(new Set(resolved));
+    this.logger.log(
+      `[tapd-owner-map] workspaceId=${workspaceId} input=${JSON.stringify(normalizedOwners)} resolved=${JSON.stringify(uniqueResolved)}`,
+    );
+    return uniqueResolved;
   }
 
   private async getStoryStatusOptions(workspaceId: string): Promise<Record<string, string>> {
@@ -160,11 +171,82 @@ export class TapdService {
     return normalizedOptions;
   }
 
+  private normalizeStatusOptions(options: unknown) {
+    const normalizedOptions: Record<string, string> = {};
+
+    if (Array.isArray(options)) {
+      options.forEach((item: unknown) => {
+        if (item === null || item === undefined) {
+          return;
+        }
+        if (typeof item === 'string') {
+          const value = item.trim();
+          if (!value) return;
+          normalizedOptions[value] = value;
+          normalizedOptions[value.toLowerCase()] = value;
+          return;
+        }
+        if (typeof item === 'object') {
+          const record = item as Record<string, unknown>;
+          const key = String(record.value ?? record.key ?? record.id ?? '').trim();
+          const label = String(record.label ?? record.name ?? record.text ?? key).trim();
+          if (!key || !label) return;
+          normalizedOptions[key] = label;
+          normalizedOptions[key.toLowerCase()] = label;
+        }
+      });
+      return normalizedOptions;
+    }
+
+    if (typeof options === 'object' && options !== null) {
+      Object.entries(options as Record<string, unknown>).forEach(([code, label]) => {
+        const key = String(code || '').trim();
+        const value = String(label || '').trim();
+        if (!key || !value) return;
+        normalizedOptions[key] = value;
+        normalizedOptions[key.toLowerCase()] = value;
+      });
+    }
+
+    return normalizedOptions;
+  }
+
+  private async getBugStatusOptions(workspaceId: string): Promise<Record<string, string>> {
+    if (this.bugStatusOptionsCache.has(workspaceId)) {
+      return this.bugStatusOptionsCache.get(workspaceId) || {};
+    }
+
+    let normalizedOptions: Record<string, string> = {};
+
+    try {
+      const response = await this.client.get(`/bugs/get_fields_info?workspace_id=${workspaceId}`);
+      const fieldsInfo = response.data?.data ?? response.data ?? {};
+      const candidateOptions =
+        fieldsInfo?.status?.options ??
+        fieldsInfo?.bug_status?.options ??
+        fieldsInfo?.status_options ??
+        {};
+      normalizedOptions = this.normalizeStatusOptions(candidateOptions);
+    } catch {
+      this.logger.warn(`[tapd-bugs-status] failed to load status options, workspaceId=${workspaceId}`);
+    }
+
+    this.bugStatusOptionsCache.set(workspaceId, normalizedOptions);
+    return normalizedOptions;
+  }
+
   async getStoryStatusLabelMap(workspaceId: string): Promise<Record<string, string>> {
     if (!this.client) {
       throw new Error('TAPD client not initialized. Please set config first.');
     }
     return this.getStoryStatusOptions(workspaceId);
+  }
+
+  async getBugStatusLabelMap(workspaceId: string): Promise<Record<string, string>> {
+    if (!this.client) {
+      throw new Error('TAPD client not initialized. Please set config first.');
+    }
+    return this.getBugStatusOptions(workspaceId);
   }
 
   private async getDoneStoryStatuses(workspaceId: string): Promise<Set<string>> {
@@ -189,6 +271,86 @@ export class TapdService {
       console.warn('Failed to load TAPD story status options, fallback to default done statuses.');
       return defaultDone;
     }
+  }
+
+  private async getDoneBugStatuses(workspaceId: string): Promise<Set<string>> {
+    if (this.doneBugStatusesCache.has(workspaceId)) {
+      return this.doneBugStatusesCache.get(workspaceId) || new Set<string>();
+    }
+
+    const defaultDone = new Set<string>([
+      'resolved',
+      'rejected',
+      'closed',
+      'done',
+      'completed',
+      'abandoned',
+      'verified',
+      'fixed',
+      'fixed_closed',
+      'postponed',
+    ]);
+
+    try {
+      const statusOptions = await this.getBugStatusOptions(workspaceId);
+      const doneLabelPattern = /(已完成|已上线|已关闭|已拒绝|拒绝|关闭|完成|上线|终止|已发布|已实现|已解决|已修复|已验证|已确认|qa已确认|bugqa已确认|qa确认|已验收|验证通过|延期|postponed|done|closed|resolved|rejected|fixed|verified)/i;
+      const doneCodes = new Set<string>(defaultDone);
+      Object.entries(statusOptions).forEach(([code, label]) => {
+        if (doneLabelPattern.test(String(label))) {
+          doneCodes.add(String(code).toLowerCase());
+          doneCodes.add(String(label).toLowerCase());
+        }
+      });
+      this.doneBugStatusesCache.set(workspaceId, doneCodes);
+      return doneCodes;
+    } catch {
+      this.logger.warn(`[tapd-bugs-status] failed to infer done statuses, workspaceId=${workspaceId}, use defaults`);
+      return defaultDone;
+    }
+  }
+
+  private async fetchPagedTapdData(endpoint: string, queryParams: Record<string, string>, wrapperKey: 'Story' | 'Bug'): Promise<any[]> {
+    const allItems: any[] = [];
+    let previousPageFingerprint = '';
+
+    for (let page = 1; page <= this.maxPages; page += 1) {
+      const response = await this.client.get(endpoint, {
+        params: {
+          ...queryParams,
+          page: String(page),
+          limit: String(this.pageSize),
+        },
+      });
+      const rawData = response.data?.data || response.data || [];
+      const pageItems = rawData
+        .map((item: any) => item?.[wrapperKey] || item)
+        .filter((item: any) => item && (item.id || item.story_id || item.bug_id));
+
+      if (pageItems.length === 0) {
+        break;
+      }
+
+      const fingerprint = pageItems
+        .slice(0, 5)
+        .map((item: any) => String(item.id || item.story_id || item.bug_id || ''))
+        .join(',');
+      if (page > 1 && fingerprint && fingerprint === previousPageFingerprint) {
+        break;
+      }
+      previousPageFingerprint = fingerprint;
+
+      allItems.push(...pageItems);
+
+      if (pageItems.length < this.pageSize) {
+        break;
+      }
+    }
+
+    return Array.from(
+      new Map(
+        allItems.map((item: any) => [String(item.id || item.story_id || item.bug_id), item]),
+      ).values(),
+    );
   }
 
   private readCredentials() {
@@ -335,8 +497,11 @@ export class TapdService {
       if (params.iterationId) {
         queryParams['iteration_id'] = params.iterationId;
       }
-      if (params.ownerIds && params.ownerIds.length > 0) {
-        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, params.ownerIds);
+      const preferredOwners = (params.owners ?? []).map((item) => String(item || '').trim()).filter(Boolean);
+      const fallbackOwnerIds = (params.ownerIds ?? []).map((item) => String(item || '').trim()).filter(Boolean);
+      const ownerFilters = preferredOwners.length > 0 ? preferredOwners : fallbackOwnerIds;
+      if (ownerFilters.length > 0) {
+        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, ownerFilters);
         if (ownerAccounts.length > 0) {
           // TAPD stories owner filter expects `owner`, not `owner_id`.
           queryParams['owner'] = ownerAccounts.join(',');
@@ -346,10 +511,14 @@ export class TapdService {
         queryParams['status'] = params.status;
       }
 
-      const response = await this.client.get(`/stories?workspace_id=${params.workspaceId}`, { params: queryParams });
-      const rawData = response.data?.data || response.data || [];
-      // TAPD 返回格式: [{ "Story": {...} }, ...]
-      const data = rawData.map((item: any) => item.Story || item);
+      this.logger.log(
+        `[tapd-stories-query] workspaceId=${params.workspaceId} owner=${queryParams.owner ?? ''} source=${preferredOwners.length > 0 ? 'owners' : 'ownerIds'} params=${JSON.stringify(queryParams)}`,
+      );
+      const data = await this.fetchPagedTapdData(
+        `/stories?workspace_id=${params.workspaceId}`,
+        queryParams,
+        'Story',
+      );
 
       const doneStatuses = params.status ? new Set<string>() : await this.getDoneStoryStatuses(params.workspaceId);
       const doneLabelPattern = /(已完成|已上线|已关闭|已拒绝|关闭|完成|上线|终止|已发布|已实现|done|closed|resolved|rejected)/i;
@@ -373,7 +542,7 @@ export class TapdService {
         owner: item.owner?.name || item.owner_name || '',
         created: item.created,
         modified: item.modified,
-        url: item.url || `https://www.tapd.cn/tapd_fe/${this.config?.workspaceId}/story/detail/${item.id}`,
+        url: item.url || `https://www.tapd.cn/tapd_fe/${params.workspaceId}/story/detail/${item.id}`,
       }));
     } catch (error: any) {
       const status = error?.response?.status;
@@ -405,8 +574,11 @@ export class TapdService {
       if (params.versionId) {
         queryParams['version_id'] = params.versionId;
       }
-      if (params.ownerIds && params.ownerIds.length > 0) {
-        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, params.ownerIds);
+      const preferredOwners = (params.owners ?? []).map((item) => String(item || '').trim()).filter(Boolean);
+      const fallbackOwnerIds = (params.ownerIds ?? []).map((item) => String(item || '').trim()).filter(Boolean);
+      const ownerFilters = preferredOwners.length > 0 ? preferredOwners : fallbackOwnerIds;
+      if (ownerFilters.length > 0) {
+        const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, ownerFilters);
         if (ownerAccounts.length > 0) {
           // TAPD bugs owner filter expects `current_owner`.
           queryParams['current_owner'] = ownerAccounts.join(',');
@@ -416,23 +588,78 @@ export class TapdService {
         queryParams['status'] = params.status;
       }
 
-      const response = await this.client.get(`/bugs?workspace_id=${params.workspaceId}`, { params: queryParams });
-      const rawData = response.data?.data || response.data || [];
-      // TAPD 返回格式: [{ "Bug": {...} }, ...]
-      const data = rawData.map((item: any) => item.Bug || item);
-      
-      return data.map((item: any) => ({
-        iterationId: item.iteration_id || item.iterationId,
-        id: item.id || item.bug_id,
-        title: item.title,
-        description: item.description || '',
-        status: item.status,
-        owner: item.owner?.name || item.owner_name || '',
-        created: item.created,
-        modified: item.modified,
-        url: item.url || `https://www.tapd.cn/tapd_fe/${this.config?.workspaceId}/bug/detail/${item.id || item.bug_id}`,
-        version: item.version || '',
+      this.logger.log(
+        `[tapd-bugs-query] workspaceId=${params.workspaceId} current_owner=${queryParams.current_owner ?? ''} source=${preferredOwners.length > 0 ? 'owners' : 'ownerIds'} params=${JSON.stringify(queryParams)}`,
+      );
+      const data = await this.fetchPagedTapdData(
+        `/bugs?workspace_id=${params.workspaceId}`,
+        queryParams,
+        'Bug',
+      );
+      const bugStatusLabelMap = await this.getBugStatusOptions(params.workspaceId);
+      const doneStatuses = await this.getDoneBugStatuses(params.workspaceId);
+      const doneLabelPattern = /(已完成|已上线|已关闭|已拒绝|拒绝|关闭|完成|上线|终止|已发布|已实现|已解决|已修复|已验证|已确认|qa已确认|bugqa已确认|qa确认|已验收|验证通过|延期|postponed|done|closed|resolved|rejected|fixed|verified)/i;
+
+      const allStatusEntries = Array.from(
+        new Set<string>(
+          data
+            .map((item: any) => String(item.status || '').trim())
+            .filter(Boolean),
+        ),
+      ).map((status: string) => ({
+        raw: status,
+        label: bugStatusLabelMap[status] || bugStatusLabelMap[status.toLowerCase()] || status,
       }));
+
+      const filteredData = params.status
+        ? data
+        : data.filter((item: any) => {
+            const rawStatus = String(item.status || '');
+            const status = rawStatus.toLowerCase();
+            const mappedLabel = String(
+              bugStatusLabelMap[rawStatus] || bugStatusLabelMap[status] || rawStatus,
+            );
+            if (!status) return false;
+            if (doneStatuses.has(status)) return false;
+            if (doneStatuses.has(mappedLabel.toLowerCase())) return false;
+            if (doneLabelPattern.test(rawStatus)) return false;
+            if (doneLabelPattern.test(mappedLabel)) return false;
+            return true;
+          });
+
+      if (!params.status) {
+        const openStatusEntries = Array.from(
+          new Set<string>(
+            filteredData
+              .map((item: any) => String(item.status || '').trim())
+              .filter(Boolean),
+          ),
+        ).map((status: string) => ({
+          raw: status,
+          label: bugStatusLabelMap[status] || bugStatusLabelMap[status.toLowerCase()] || status,
+        }));
+        this.logger.log(
+          `[tapd-bugs-status-summary] workspaceId=${params.workspaceId} all=${JSON.stringify(allStatusEntries)} suspected_open=${JSON.stringify(openStatusEntries)}`,
+        );
+      }
+
+      return filteredData.map((item: any) => {
+        const bugDetailId = item.bug_id || item.id;
+        const rawStatus = String(item.status || '');
+        const statusLabel = bugStatusLabelMap[rawStatus] || bugStatusLabelMap[rawStatus.toLowerCase()] || rawStatus;
+        return {
+          iterationId: item.iteration_id || item.iterationId,
+          id: item.id || item.bug_id,
+          title: item.title,
+          description: item.description || '',
+          status: statusLabel,
+          owner: item.owner?.name || item.owner_name || '',
+          created: item.created,
+          modified: item.modified,
+          url: item.url || `https://www.tapd.cn/tapd_fe/${params.workspaceId}/bug/detail/${bugDetailId}`,
+          version: item.version || '',
+        };
+      });
     } catch (error: any) {
       const status = error?.response?.status;
       if (status === 401) {
@@ -450,9 +677,13 @@ export class TapdService {
 
     try {
       const [ownerAccount] = await this.resolveOwnerAccounts(workspaceId, [userId]);
+      const ownerValue = ownerAccount || userId;
+      this.logger.log(
+        `[tapd-todos-query] workspaceId=${workspaceId} owner=${ownerValue} userIdInput=${userId}`,
+      );
       const response = await this.client.get(`/stories?workspace_id=${workspaceId}`, {
         params: {
-          owner: ownerAccount || userId,
+          owner: ownerValue,
           status: 'open,in_progress',
         },
       });
@@ -470,7 +701,7 @@ export class TapdService {
         owner: item.owner?.name || item.owner_name || '',
         created: item.created,
         modified: item.modified,
-        url: item.url || `https://www.tapd.cn/tapd_fe/${this.config?.workspaceId}/story/detail/${item.id}`,
+        url: item.url || `https://www.tapd.cn/tapd_fe/${workspaceId}/story/detail/${item.id}`,
       }));
     } catch (error) {
       console.error('Failed to fetch todos:', error);
