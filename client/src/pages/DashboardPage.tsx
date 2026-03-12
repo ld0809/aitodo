@@ -221,14 +221,15 @@ export function DashboardPage() {
     const cardsPerRow = Math.max(1, Math.round(gridWidth / BASE_CARD_WIDTH));
     return cardsPerRow * CARD_W;
   }, [gridWidth]);
+  const userScope = user?.id ?? 'anonymous';
 
   const { data: todos = [], isLoading: todosLoading } = useQuery({
-    queryKey: ['todos'],
+    queryKey: ['todos', userScope],
     queryFn: () => todosApi.getAll().then((res) => res.data),
   });
 
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
-    queryKey: ['cards'],
+    queryKey: ['cards', userScope],
     queryFn: () => cardsApi.getAll().then((res) => res.data),
   });
 
@@ -239,7 +240,7 @@ export function DashboardPage() {
     .join('|');
 
   const { data: remoteCardTodos = {} } = useQuery({
-    queryKey: ['card-todos', remoteCardsKey],
+    queryKey: ['card-todos', userScope, remoteCardsKey],
     enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared'),
     queryFn: async () => {
       const targetCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared');
@@ -259,18 +260,18 @@ export function DashboardPage() {
   });
 
   const { data: tags = [] } = useQuery({
-    queryKey: ['tags'],
+    queryKey: ['tags', userScope],
     queryFn: () => tagsApi.getAll().then((res) => res.data),
   });
 
   const { data: meProfile } = useQuery({
-    queryKey: ['me'],
+    queryKey: ['me', userScope],
     enabled: !!user,
     queryFn: () => usersApi.getMe().then((res) => res.data),
   });
 
   const { data: todoProgressEntries = [] } = useQuery({
-    queryKey: ['todo-progress', activeProgressTodo?.id],
+    queryKey: ['todo-progress', userScope, activeProgressTodo?.id],
     enabled: !!activeProgressTodo?.id && showProgressModal,
     queryFn: () => todosApi.getProgress(activeProgressTodo!.id).then((res) => res.data as TodoProgressEntry[]),
   });
@@ -284,8 +285,8 @@ export function DashboardPage() {
   const createTodoMutation = useMutation({
     mutationFn: (data: CreateTodoDto) => todosApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
       setShowTodoModal(false);
       setActiveTodoCard(null);
     },
@@ -295,8 +296,8 @@ export function DashboardPage() {
     mutationFn: ({ id, data }: { id: string; data: UpdateTodoDto }) =>
       todosApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
       setShowTodoModal(false);
       setEditingTodo(null);
       setActiveTodoCard(null);
@@ -306,16 +307,16 @@ export function DashboardPage() {
   const deleteTodoMutation = useMutation({
     mutationFn: (id: string) => todosApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
     },
   });
 
   const toggleTodoMutation = useMutation({
     mutationFn: ({ id, completed }: { id: string; completed: boolean }) => todosApi.toggleStatus(id, completed),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
     },
   });
 
@@ -323,9 +324,9 @@ export function DashboardPage() {
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       todosApi.createProgress(id, { content }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
-      queryClient.invalidateQueries({ queryKey: ['todo-progress', activeProgressTodo?.id] });
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress', userScope, activeProgressTodo?.id] });
       setProgressDraft('');
       setShowProgressModal(false);
       setActiveProgressTodo(null);
@@ -346,8 +347,8 @@ export function DashboardPage() {
   const createCardMutation = useMutation({
     mutationFn: (data: CreateCardDto) => cardsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
       setShowCardModal(false);
     },
     onError: (error: unknown) => {
@@ -359,8 +360,8 @@ export function DashboardPage() {
     mutationFn: ({ id, data }: { id: string; data: UpdateCardDto }) =>
       cardsApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
-      queryClient.invalidateQueries({ queryKey: ['card-todos'] });
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
       setShowCardModal(false);
       setEditingCard(null);
     },
@@ -372,15 +373,15 @@ export function DashboardPage() {
   const deleteCardMutation = useMutation({
     mutationFn: (id: string) => cardsApi.delete(id),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ['card-todos'] });
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.removeQueries({ queryKey: ['card-todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
     },
   });
 
   const createTagMutation = useMutation({
     mutationFn: (data: CreateTagDto) => tagsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['tags', userScope] });
     },
   });
 
@@ -388,14 +389,14 @@ export function DashboardPage() {
     mutationFn: ({ id, data }: { id: string; data: UpdateTagDto }) =>
       tagsApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['tags', userScope] });
     },
   });
 
   const deleteTagMutation = useMutation({
     mutationFn: (id: string) => tagsApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ['tags', userScope] });
     },
   });
 
@@ -403,7 +404,7 @@ export function DashboardPage() {
     mutationFn: (data: { target?: string; nickname?: string }) => usersApi.updateMe(data),
     onSuccess: (res) => {
       updateUser(res.data);
-      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['me', userScope] });
       setShowProfileModal(false);
       setShowGoalModal(false);
     },
@@ -645,7 +646,7 @@ export function DashboardPage() {
     if (changedLayouts.length === 0) return;
 
     const changedMap = new Map(changedLayouts.map((item) => [item.i, item]));
-    queryClient.setQueryData(['cards'], (previous: Card[] | undefined) => {
+    queryClient.setQueryData(['cards', userScope], (previous: Card[] | undefined) => {
       if (!Array.isArray(previous)) return previous;
       return previous.map((card) => {
         const next = changedMap.get(card.id);
@@ -665,7 +666,7 @@ export function DashboardPage() {
         cardsApi.updateLayout(item.i, { x: item.x, y: item.y, w: item.w, h: item.h }),
       ),
     ).finally(() => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
     });
   };
 

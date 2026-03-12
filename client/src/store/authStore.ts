@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '../types';
+import { queryClient } from '../lib/queryClient';
 
 interface AuthState {
   user: User | null;
@@ -18,10 +19,12 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuthenticated: false,
       setAuth: (user, accessToken) => {
+        queryClient.clear();
         localStorage.setItem('accessToken', accessToken);
         set({ user, accessToken, isAuthenticated: true });
       },
       logout: () => {
+        queryClient.clear();
         localStorage.removeItem('accessToken');
         set({ user: null, accessToken: null, isAuthenticated: false });
       },
