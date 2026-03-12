@@ -26,6 +26,24 @@ interface MentionAnchor {
   top: number;
 }
 
+function toDateTimeLocalInputValue(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value).replace(' ', 'T').slice(0, 16);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 function getMentionAnchor(textarea: HTMLTextAreaElement, cursor: number): MentionAnchor {
   const style = window.getComputedStyle(textarea);
   const mirror = document.createElement('div');
@@ -149,8 +167,8 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
   useEffect(() => {
     if (todo) {
       setContent(todo.content);
-      setDueAt(todo.dueAt ? todo.dueAt.slice(0, 16) : '');
-      setExecuteAt(todo.executeAt ? todo.executeAt.slice(0, 16) : '');
+      setDueAt(toDateTimeLocalInputValue(todo.dueAt));
+      setExecuteAt(toDateTimeLocalInputValue(todo.executeAt));
       setSelectedTagIds((Array.isArray(todo.tags) ? todo.tags : []).map((t) => t.id));
       setActiveMention(null);
       setMentionAnchor(null);
