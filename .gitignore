@@ -1,4 +1,12 @@
 .omc
+backend/.env
+backend/.env.*
+!backend/.env.example
+client/.env
+client/.env.*
+!client/.env.example
+!client/.env.production.example
+client/.vite/
 backend/data/backups/
 backend/data/*.db
 backend/data/*.sqlite

@@ -111,6 +111,18 @@ scripts/deploy-release.sh
 4. 切换 `/opt/aitodo/current` 软链并重启 PM2
 5. 做健康检查，失败自动回滚到上一个 release
 
+环境文件读取顺序：
+1. 优先使用服务器备份配置目录中的文件，默认：
+   - `/opt/aitodo/configs_backup/.env`
+   - `/opt/aitodo/configs_backup/client.env.production`
+   - `/opt/aitodo/configs_backup/client.env`
+2. 若备份目录中不存在，再回退到上一个 release 里的环境文件
+
+注意：
+- 仓库中不要提交真实 `.env` 文件
+- 请改用 `backend/.env.example`、`client/.env.example` 作为模板
+- 你当前服务器的后端环境文件可放在 `/opt/aitodo/configs_backup/.env`
+
 ## 邮箱验证码发送配置（SMTP）
 
 后端会在 `POST /auth/send-email-code` 真实发送验证码邮件。请在 `backend/.env`（以及线上 `backend/.env`）填写：

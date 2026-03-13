@@ -12,6 +12,10 @@ DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APP_ROOT="${APP_ROOT:-/opt/aitodo}"
 PM2_APP="${PM2_APP:-aitodo-backend}"
 REMOTE_DB_PATH="${REMOTE_DB_PATH:-$APP_ROOT/backend/data/app.db}"
+CONFIG_BACKUP_DIR="${CONFIG_BACKUP_DIR:-$APP_ROOT/configs_backup}"
+BACKEND_ENV_BACKUP_PATH="${BACKEND_ENV_BACKUP_PATH:-$CONFIG_BACKUP_DIR/.env}"
+CLIENT_ENV_PRODUCTION_BACKUP_PATH="${CLIENT_ENV_PRODUCTION_BACKUP_PATH:-$CONFIG_BACKUP_DIR/client.env.production}"
+CLIENT_ENV_BACKUP_PATH="${CLIENT_ENV_BACKUP_PATH:-$CONFIG_BACKUP_DIR/client.env}"
 
 SKIP_PUSH=false
 DRY_RUN=false
@@ -30,6 +34,10 @@ Options:
   --app-root <path>         Default: $APP_ROOT
   --pm2-app <name>          Default: $PM2_APP
   --db-path <path>          Default: $REMOTE_DB_PATH
+  --config-backup-dir <dir> Default: $CONFIG_BACKUP_DIR
+  --backend-env <path>      Default: $BACKEND_ENV_BACKUP_PATH
+  --client-env-prod <path>  Default: $CLIENT_ENV_PRODUCTION_BACKUP_PATH
+  --client-env <path>       Default: $CLIENT_ENV_BACKUP_PATH
   --skip-push               Do not run local git push
   --dry-run                 Print resolved parameters only
   -h, --help                Show help
@@ -71,6 +79,25 @@ while [[ $# -gt 0 ]]; do
       REMOTE_DB_PATH="${2:-}"
       shift 2
       ;;
+    --config-backup-dir)
+      CONFIG_BACKUP_DIR="${2:-}"
+      BACKEND_ENV_BACKUP_PATH="$CONFIG_BACKUP_DIR/.env"
+      CLIENT_ENV_PRODUCTION_BACKUP_PATH="$CONFIG_BACKUP_DIR/client.env.production"
+      CLIENT_ENV_BACKUP_PATH="$CONFIG_BACKUP_DIR/client.env"
+      shift 2
+      ;;
+    --backend-env)
+      BACKEND_ENV_BACKUP_PATH="${2:-}"
+      shift 2
+      ;;
+    --client-env-prod)
+      CLIENT_ENV_PRODUCTION_BACKUP_PATH="${2:-}"
+      shift 2
+      ;;
+    --client-env)
+      CLIENT_ENV_BACKUP_PATH="${2:-}"
+      shift 2
+      ;;
     --skip-push)
       SKIP_PUSH=true
       shift
@@ -107,6 +134,10 @@ if [[ "$DRY_RUN" == true ]]; then
   echo "  app_root:      $APP_ROOT"
   echo "  pm2_app:       $PM2_APP"
   echo "  remote_db:     $REMOTE_DB_PATH"
+  echo "  config_dir:    $CONFIG_BACKUP_DIR"
+  echo "  backend_env:   $BACKEND_ENV_BACKUP_PATH"
+  echo "  client_env:    $CLIENT_ENV_BACKUP_PATH"
+  echo "  client_env_p:  $CLIENT_ENV_PRODUCTION_BACKUP_PATH"
   echo "  skip_push:     $SKIP_PUSH"
   exit 0
 fi
@@ -125,7 +156,7 @@ SSH_TARGET="${DEPLOY_USER}@${DEPLOY_HOST}"
 echo "[deploy] target=$SSH_TARGET"
 
 ssh -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new "$SSH_TARGET" \
-  "sudo -n env APP_ROOT='$APP_ROOT' REPO_URL='$DEPLOY_REPO_URL' BRANCH='$DEPLOY_BRANCH' PM2_APP='$PM2_APP' REMOTE_DB_PATH='$REMOTE_DB_PATH' bash -s" <<'REMOTE'
+  "sudo -n env APP_ROOT='$APP_ROOT' REPO_URL='$DEPLOY_REPO_URL' BRANCH='$DEPLOY_BRANCH' PM2_APP='$PM2_APP' REMOTE_DB_PATH='$REMOTE_DB_PATH' BACKEND_ENV_BACKUP_PATH='$BACKEND_ENV_BACKUP_PATH' CLIENT_ENV_PRODUCTION_BACKUP_PATH='$CLIENT_ENV_PRODUCTION_BACKUP_PATH' CLIENT_ENV_BACKUP_PATH='$CLIENT_ENV_BACKUP_PATH' bash -s" <<'REMOTE'
 set -euo pipefail
 
 command -v git >/dev/null 2>&1
@@ -162,10 +193,28 @@ mkdir -p "$NEW_RELEASE"
 tar -xzf "$ARCHIVE_FILE" -C "$NEW_RELEASE" --strip-components=1
 rm -f "$ARCHIVE_FILE"
 
-if [[ -n "$PREV_RELEASE" ]]; then
-  if [[ -f "$PREV_RELEASE/backend/.env" ]]; then cp "$PREV_RELEASE/backend/.env" "$NEW_RELEASE/backend/.env"; fi
-  if [[ -f "$PREV_RELEASE/client/.env.production" ]]; then cp "$PREV_RELEASE/client/.env.production" "$NEW_RELEASE/client/.env.production"; fi
-  if [[ -f "$PREV_RELEASE/client/.env" ]]; then cp "$PREV_RELEASE/client/.env" "$NEW_RELEASE/client/.env"; fi
+if [[ -f "$BACKEND_ENV_BACKUP_PATH" ]]; then
+  echo "[deploy] use backend env backup: $BACKEND_ENV_BACKUP_PATH"
+  cp "$BACKEND_ENV_BACKUP_PATH" "$NEW_RELEASE/backend/.env"
+elif [[ -n "$PREV_RELEASE" && -f "$PREV_RELEASE/backend/.env" ]]; then
+  echo "[deploy] reuse backend env from previous release"
+  cp "$PREV_RELEASE/backend/.env" "$NEW_RELEASE/backend/.env"
+fi
+
+if [[ -f "$CLIENT_ENV_PRODUCTION_BACKUP_PATH" ]]; then
+  echo "[deploy] use client prod env backup: $CLIENT_ENV_PRODUCTION_BACKUP_PATH"
+  cp "$CLIENT_ENV_PRODUCTION_BACKUP_PATH" "$NEW_RELEASE/client/.env.production"
+elif [[ -n "$PREV_RELEASE" && -f "$PREV_RELEASE/client/.env.production" ]]; then
+  echo "[deploy] reuse client prod env from previous release"
+  cp "$PREV_RELEASE/client/.env.production" "$NEW_RELEASE/client/.env.production"
+fi
+
+if [[ -f "$CLIENT_ENV_BACKUP_PATH" ]]; then
+  echo "[deploy] use client env backup: $CLIENT_ENV_BACKUP_PATH"
+  cp "$CLIENT_ENV_BACKUP_PATH" "$NEW_RELEASE/client/.env"
+elif [[ -n "$PREV_RELEASE" && -f "$PREV_RELEASE/client/.env" ]]; then
+  echo "[deploy] reuse client env from previous release"
+  cp "$PREV_RELEASE/client/.env" "$NEW_RELEASE/client/.env"
 fi
 
 read_package_version() {
