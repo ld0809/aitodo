@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsUUID, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsUUID, Min, ValidateNested } from 'class-validator';
 
 class LayoutItemDto {
   @IsUUID('4')
@@ -31,4 +31,8 @@ export class UpdateDashboardLayoutDto {
   @ValidateNested({ each: true })
   @Type(() => LayoutItemDto)
   items!: LayoutItemDto[];
+
+  @IsOptional()
+  @IsIn(['mobile', 'tablet', 'desktop_normal', 'desktop_big'] as const)
+  viewport?: 'mobile' | 'tablet' | 'desktop_normal' | 'desktop_big';
 }

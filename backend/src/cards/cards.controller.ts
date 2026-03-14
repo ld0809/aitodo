@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CardsService } from './cards.service';
@@ -13,8 +13,11 @@ export class CardsController {
   constructor(private readonly cardsService: CardsService) {}
 
   @Get('cards')
-  findAll(@CurrentUser() user: { userId: string }) {
-    return this.cardsService.findAll(user.userId);
+  findAll(
+    @CurrentUser() user: { userId: string },
+    @Query('viewport') viewport?: 'mobile' | 'tablet' | 'desktop_normal' | 'desktop_big',
+  ) {
+    return this.cardsService.findAll(user.userId, viewport);
   }
 
   @Post('cards')
@@ -23,8 +26,12 @@ export class CardsController {
   }
 
   @Get('cards/:id')
-  findOne(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
-    return this.cardsService.findOne(user.userId, id);
+  findOne(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Query('viewport') viewport?: 'mobile' | 'tablet' | 'desktop_normal' | 'desktop_big',
+  ) {
+    return this.cardsService.findOne(user.userId, id, viewport);
   }
 
   @Patch('cards/:id')

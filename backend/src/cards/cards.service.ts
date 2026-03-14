@@ -10,7 +10,13 @@ import { PluginExecutor } from '../plugins/plugin-executor.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { UpdateDashboardLayoutDto } from './dto/update-dashboard-layout.dto';
-import { UpdateLayoutDto } from './dto/update-layout.dto';
+import { LayoutViewport, UpdateLayoutDto } from './dto/update-layout.dto';
+
+type LayoutItem = { x: number; y: number; w: number; h: number };
+type LayoutByViewport = Partial<Record<LayoutViewport, LayoutItem>>;
+
+const DEFAULT_LAYOUT_VIEWPORT: LayoutViewport = 'desktop_normal';
+const VALID_LAYOUT_VIEWPORTS = new Set<LayoutViewport>(['mobile', 'tablet', 'desktop_normal', 'desktop_big']);
 
 @Injectable()
 export class CardsService {
@@ -56,7 +62,7 @@ export class CardsService {
     return this.findOne(userId, savedCard.id);
   }
 
-  async findAll(userId: string) {
+  async findAll(userId: string, viewport?: LayoutViewport) {
     const cards = await this.cardRepository
       .createQueryBuilder('card')
       .leftJoinAndSelect('card.tags', 'tag')
@@ -81,13 +87,13 @@ export class CardsService {
       .distinct(true)
       .getMany();
 
-    const cardsWithUserLayout = await this.applyUserLayouts(userId, cards);
+    const cardsWithUserLayout = await this.applyUserLayouts(userId, cards, viewport);
     return cardsWithUserLayout.map((card) => this.toCardResponse(card));
   }
 
-  async findOne(userId: string, id: string) {
+  async findOne(userId: string, id: string, viewport?: LayoutViewport) {
     const card = await this.findAccessibleCardOrThrow(userId, id);
-    const [cardWithUserLayout] = await this.applyUserLayouts(userId, [card]);
+    const [cardWithUserLayout] = await this.applyUserLayouts(userId, [card], viewport);
     return this.toCardResponse(cardWithUserLayout ?? card);
   }
 
@@ -153,16 +159,18 @@ export class CardsService {
   }
 
   async updateLayout(userId: string, id: string, dto: UpdateLayoutDto) {
+    const viewport = this.resolveViewport(dto.viewport);
     await this.findAccessibleCardOrThrow(userId, id);
-    await this.saveUserLayouts(userId, [{ id, x: dto.x, y: dto.y, w: dto.w, h: dto.h }]);
-    return this.findOne(userId, id);
+    await this.saveUserLayouts(userId, [{ id, x: dto.x, y: dto.y, w: dto.w, h: dto.h }], viewport);
+    return this.findOne(userId, id, viewport);
   }
 
   async updateDashboardLayout(userId: string, dto: UpdateDashboardLayoutDto) {
+    const viewport = this.resolveViewport(dto.viewport);
     const itemMap = new Map(dto.items.map((item) => [item.id, item]));
     const cardIds = [...itemMap.keys()];
     if (cardIds.length === 0) {
-      return this.findAll(userId);
+      return this.findAll(userId, viewport);
     }
     await this.validateDashboardLayoutCards(userId, cardIds);
 
@@ -179,11 +187,12 @@ export class CardsService {
             h: item.h,
           };
         }),
+        viewport,
         manager,
       );
     });
 
-    return this.findAll(userId);
+    return this.findAll(userId, viewport);
   }
 
   async fetchCardTodos(userId: string, id: string) {
@@ -327,11 +336,12 @@ export class CardsService {
     return normalizedEmails.map((email) => userByEmail.get(email)!);
   }
 
-  private async applyUserLayouts(userId: string, cards: Card[]) {
+  private async applyUserLayouts(userId: string, cards: Card[], viewport?: LayoutViewport) {
     if (cards.length === 0) {
       return cards;
     }
 
+    const normalizedViewport = this.resolveViewport(viewport);
     const cardIds = cards.map((card) => card.id);
     const layouts = await this.cardUserLayoutRepository.find({
       where: {
@@ -344,15 +354,40 @@ export class CardsService {
     }
 
     const layoutByCardId = new Map(layouts.map((layout) => [layout.cardId, layout]));
+    const backfilledLayouts: CardUserLayout[] = [];
     for (const card of cards) {
       const layout = layoutByCardId.get(card.id);
       if (!layout) {
         continue;
       }
-      card.x = layout.x;
+      const layoutByViewport = this.parseLayoutsJson(layout.layoutsJson);
+      const scopedLayout = this.getLayoutByViewport(layoutByViewport, normalizedViewport);
+      if (scopedLayout) {
+        card.x = scopedLayout.x;
+        card.y = scopedLayout.y;
+        card.w = scopedLayout.w;
+        card.h = scopedLayout.h;
+        continue;
+      }
+
+      card.x = this.normalizeLegacyLayoutAxis(layout.x);
       card.y = layout.y;
-      card.w = layout.w;
+      card.w = this.normalizeLegacyLayoutAxis(layout.w, true);
       card.h = layout.h;
+
+      layout.layoutsJson = JSON.stringify(
+        this.mergeLayout(layoutByViewport, normalizedViewport, {
+          x: card.x,
+          y: card.y,
+          w: card.w,
+          h: card.h,
+        }),
+      );
+      backfilledLayouts.push(layout);
+    }
+
+    if (backfilledLayouts.length > 0) {
+      await this.cardUserLayoutRepository.save(backfilledLayouts);
     }
 
     return cards;
@@ -361,6 +396,7 @@ export class CardsService {
   private async saveUserLayouts(
     userId: string,
     items: Array<{ id: string; x: number; y: number; w: number; h: number }>,
+    viewport: LayoutViewport,
     manager?: EntityManager,
   ) {
     if (items.length === 0) {
@@ -382,6 +418,12 @@ export class CardsService {
       const item = itemMap.get(cardId)!;
       const existingLayout = existingByCardId.get(cardId);
       if (existingLayout) {
+        const nextLayouts = this.mergeLayout(
+          this.parseLayoutsJson(existingLayout.layoutsJson),
+          viewport,
+          item,
+        );
+        existingLayout.layoutsJson = JSON.stringify(nextLayouts);
         existingLayout.x = item.x;
         existingLayout.y = item.y;
         existingLayout.w = item.w;
@@ -396,6 +438,9 @@ export class CardsService {
         y: item.y,
         w: item.w,
         h: item.h,
+        layoutsJson: JSON.stringify(
+          this.mergeLayout({}, viewport, item),
+        ),
       });
     });
 
@@ -403,8 +448,9 @@ export class CardsService {
   }
 
   private toCardResponse(card: Card) {
+    const { layoutsJson: _, ...restCard } = card as Card & { layoutsJson?: string | null };
     return {
-      ...card,
+      ...restCard,
       participants: (card.participants ?? []).map((participant) => ({
         id: participant.id,
         email: participant.email,
@@ -420,5 +466,72 @@ export class CardsService {
       return trimmedNickname;
     }
     return user.email.split('@')[0] ?? user.email;
+  }
+
+  private resolveViewport(viewport?: string): LayoutViewport {
+    if (viewport && VALID_LAYOUT_VIEWPORTS.has(viewport as LayoutViewport)) {
+      return viewport as LayoutViewport;
+    }
+    return DEFAULT_LAYOUT_VIEWPORT;
+  }
+
+  private parseLayoutsJson(raw: string | null | undefined): LayoutByViewport {
+    if (!raw) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object') {
+        return {};
+      }
+      const result: LayoutByViewport = {};
+      for (const viewport of VALID_LAYOUT_VIEWPORTS) {
+        const item = parsed[viewport];
+        if (!item || typeof item !== 'object') {
+          continue;
+        }
+        const value = item as Record<string, unknown>;
+        if (
+          Number.isInteger(value.x) &&
+          Number.isInteger(value.y) &&
+          Number.isInteger(value.w) &&
+          Number.isInteger(value.h)
+        ) {
+          result[viewport] = {
+            x: value.x as number,
+            y: value.y as number,
+            w: value.w as number,
+            h: value.h as number,
+          };
+        }
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
+  private getLayoutByViewport(layoutByViewport: LayoutByViewport, viewport: LayoutViewport): LayoutItem | undefined {
+    return layoutByViewport[viewport];
+  }
+
+  private mergeLayout(layoutByViewport: LayoutByViewport, viewport: LayoutViewport, item: LayoutItem): LayoutByViewport {
+    return {
+      ...layoutByViewport,
+      [viewport]: {
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+      },
+    };
+  }
+
+  private normalizeLegacyLayoutAxis(value: number, isWidth = false): number {
+    const normalized = Math.round(value / 4);
+    if (isWidth) {
+      return Math.max(1, normalized);
+    }
+    return Math.max(0, normalized);
   }
 }

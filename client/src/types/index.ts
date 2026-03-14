@@ -72,6 +72,8 @@ export interface Card {
   url?: string;
 }
 
+export type LayoutViewport = 'mobile' | 'tablet' | 'desktop_normal' | 'desktop_big';
+
 export interface AuthResponse {
   accessToken: string;
   user: User;

@@ -9,7 +9,7 @@ import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { reportsApi, type AiReportResult } from '../api/reports';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
 import { usersApi } from '../api/users';
-import type { Todo, Card, TodoProgressEntry } from '../types';
+import type { Todo, Card, LayoutViewport, TodoProgressEntry } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
@@ -177,12 +177,18 @@ export function DashboardPage() {
   const [quickCreatingCardId, setQuickCreatingCardId] = useState<string | null>(null);
   const CARD_H = 3;
   const CARD_MIN_H = 2;
-  const CARD_W = 4;
-  const BASE_CARD_WIDTH = 380;
+  const CARD_W = 1;
+  const CARD_MIN_PIXEL_WIDTH = 360;
   const GRID_ROW_HEIGHT = 150;
   const GRID_MARGIN: [number, number] = [10, 10];
   const [gridWidth, setGridWidth] = useState<number>(Math.max(320, window.innerWidth - 48));
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const gridColsByViewport: Record<LayoutViewport, number> = {
+    mobile: 1,
+    tablet: 3,
+    desktop_normal: 5,
+    desktop_big: 8,
+  };
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (axios.isAxiosError(error)) {
@@ -217,10 +223,15 @@ export function DashboardPage() {
     return () => observer.disconnect();
   }, []);
 
-  const gridCols = useMemo(() => {
-    const cardsPerRow = Math.max(1, Math.round(gridWidth / BASE_CARD_WIDTH));
-    return cardsPerRow * CARD_W;
+  const currentViewport = useMemo<LayoutViewport>(() => {
+    const cardsPerRow = Math.max(1, Math.floor(gridWidth / CARD_MIN_PIXEL_WIDTH));
+    if (cardsPerRow <= 1) return 'mobile';
+    if (cardsPerRow <= 3) return 'tablet';
+    if (cardsPerRow <= 5) return 'desktop_normal';
+    return 'desktop_big';
   }, [gridWidth]);
+
+  const gridCols = gridColsByViewport[currentViewport];
   const userScope = user?.id ?? 'anonymous';
 
   const { data: todos = [], isLoading: todosLoading } = useQuery({
@@ -229,8 +240,8 @@ export function DashboardPage() {
   });
 
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
-    queryKey: ['cards', userScope],
-    queryFn: () => cardsApi.getAll().then((res) => res.data),
+    queryKey: ['cards', userScope, currentViewport],
+    queryFn: () => cardsApi.getAll(currentViewport).then((res) => res.data),
   });
 
   const remoteCardsKey = (Array.isArray(cards) ? cards : [])
@@ -465,7 +476,7 @@ export function DashboardPage() {
     let nextY = 0;
     if (sortedCards.length > 0) {
       const last = sortedCards[sortedCards.length - 1];
-      const lastW = last.w || DEFAULT_W;
+      const lastW = CARD_W;
       const lastH = last.h || DEFAULT_H;
       nextX = (last.x || 0) + lastW;
       nextY = last.y || 0;
@@ -627,7 +638,7 @@ export function DashboardPage() {
         i: item.i,
         x: Math.max(0, Math.round(item.x)),
         y: Math.max(0, Math.round(item.y)),
-        w: Math.max(2, Math.min(gridCols, Math.round(item.w))),
+        w: CARD_W,
         h: Math.max(CARD_MIN_H, Math.round(item.h)),
       }))
       .filter((item) => cardMap.has(item.i));
@@ -638,7 +649,7 @@ export function DashboardPage() {
       if (!card) return false;
       const currentX = card.x ?? 0;
       const currentY = card.y ?? 0;
-      const currentW = card.w || CARD_W;
+      const currentW = CARD_W;
       const currentH = card.h || CARD_H;
       return currentX !== item.x || currentY !== item.y || currentW !== item.w || currentH !== item.h;
     });
@@ -646,7 +657,7 @@ export function DashboardPage() {
     if (changedLayouts.length === 0) return;
 
     const changedMap = new Map(changedLayouts.map((item) => [item.i, item]));
-    queryClient.setQueryData(['cards', userScope], (previous: Card[] | undefined) => {
+    queryClient.setQueryData(['cards', userScope, currentViewport], (previous: Card[] | undefined) => {
       if (!Array.isArray(previous)) return previous;
       return previous.map((card) => {
         const next = changedMap.get(card.id);
@@ -663,7 +674,7 @@ export function DashboardPage() {
 
     void Promise.all(
       changedLayouts.map((item) =>
-        cardsApi.updateLayout(item.i, { x: item.x, y: item.y, w: item.w, h: item.h }),
+        cardsApi.updateLayout(item.i, { x: item.x, y: item.y, w: CARD_W, h: item.h, viewport: currentViewport }),
       ),
     ).finally(() => {
       queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
@@ -682,7 +693,7 @@ export function DashboardPage() {
         i: item.i,
         x: Math.max(0, Math.round(item.x)),
         y: Math.max(0, Math.round(item.y)),
-        w: Math.max(2, Math.min(gridCols, Math.round(item.w))),
+        w: CARD_W,
         h: Math.max(CARD_MIN_H, Math.round(item.h)),
       }));
     const draggedItem = normalizedLayout.find((item) => item.i === newItem.i);
@@ -709,7 +720,7 @@ export function DashboardPage() {
       i: draggedItem.i,
       x: Math.max(0, Math.round(oldItem?.x ?? fallbackOldItem?.x ?? draggedItem.x)),
       y: Math.max(0, Math.round(oldItem?.y ?? fallbackOldItem?.y ?? draggedItem.y)),
-      w: Math.max(2, Math.min(gridCols, Math.round(oldItem?.w ?? fallbackOldItem?.w ?? draggedItem.w))),
+      w: CARD_W,
       h: Math.max(CARD_MIN_H, Math.round(oldItem?.h ?? fallbackOldItem?.h ?? draggedItem.h)),
     };
 
@@ -791,15 +802,16 @@ export function DashboardPage() {
 
   const gridLayout = useMemo(() => {
     const baseLayout = (Array.isArray(cards) ? cards : []).map((card: Card) => {
-        const normalizedW = Math.min(card.w || CARD_W, gridCols);
-        const normalizedX = Math.min(card.x || 0, Math.max(0, gridCols - normalizedW));
+        const normalizedW = CARD_W;
+        const normalizedX = Math.min(card.x || 0, Math.max(0, gridCols - CARD_W));
         return {
           i: card.id,
           x: normalizedX,
           y: Math.max(0, card.y || 0),
           w: normalizedW,
           h: Math.max(CARD_MIN_H, card.h || CARD_H),
-          minW: 2,
+          minW: CARD_W,
+          maxW: CARD_W,
           minH: CARD_MIN_H,
         };
       });

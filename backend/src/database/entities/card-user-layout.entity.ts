@@ -34,6 +34,9 @@ export class CardUserLayout {
   @Column({ type: 'integer', default: 4 })
   h!: number;
 
+  @Column({ name: 'layouts_json', type: 'text', nullable: true })
+  layoutsJson!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;
 

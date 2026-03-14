@@ -1,4 +1,4 @@
-import type { Card } from '../types';
+import type { Card, LayoutViewport } from '../types';
 import apiClient from './client';
 
 export interface CreateCardDto {
@@ -32,12 +32,13 @@ export interface UpdateLayoutDto {
   y: number;
   w?: number;
   h?: number;
+  viewport?: LayoutViewport;
 }
 
 export const cardsApi = {
-  getAll: () => apiClient.get<Card[]>('/cards'),
+  getAll: (viewport: LayoutViewport) => apiClient.get<Card[]>(`/cards?viewport=${viewport}`),
 
-  getById: (id: string) => apiClient.get<Card>(`/cards/${id}`),
+  getById: (id: string, viewport: LayoutViewport) => apiClient.get<Card>(`/cards/${id}?viewport=${viewport}`),
 
   create: (data: CreateCardDto) => apiClient.post<Card>('/cards', data),
 
