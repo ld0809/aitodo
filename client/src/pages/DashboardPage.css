@@ -244,6 +244,21 @@
   z-index: 3;
 }
 
+/* Soften card movement after drag/swap/auto-compaction. */
+.layout .react-grid-item {
+  transition:
+    transform 520ms cubic-bezier(0.16, 0.84, 0.24, 1),
+    top 520ms cubic-bezier(0.16, 0.84, 0.24, 1),
+    left 520ms cubic-bezier(0.16, 0.84, 0.24, 1);
+  will-change: transform, top, left;
+}
+
+.layout .react-grid-item.react-draggable-dragging,
+.layout .react-grid-item.resizing {
+  transition: none;
+  will-change: auto;
+}
+
 .goal-label {
   display: block;
   font-size: 14px;

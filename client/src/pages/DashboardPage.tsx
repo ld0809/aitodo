@@ -769,11 +769,11 @@ export function DashboardPage() {
       return item;
     });
     const frozenItemIds = swappedLayout
-      .filter((item) => item.i !== draggedItem.i && item.i !== selectedTarget.i)
+      .filter((item) => item.i === draggedItem.i || item.i === selectedTarget.i)
       .map((item) => item.i);
 
     applyResolvedLayout(swappedLayout, {
-      pinItemId: draggedItem.i,
+      compactUp: true,
       frozenItemIds,
     });
   };
