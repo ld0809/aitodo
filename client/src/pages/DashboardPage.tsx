@@ -233,6 +233,9 @@ export function DashboardPage() {
 
   const gridCols = gridColsByViewport[currentViewport];
   const userScope = user?.id ?? 'anonymous';
+  const creatingTodoRef = useRef(false);
+  const creatingCardRef = useRef(false);
+  const creatingTagRef = useRef(false);
 
   const { data: todos = [], isLoading: todosLoading } = useQuery({
     queryKey: ['todos', userScope],
@@ -448,6 +451,9 @@ export function DashboardPage() {
     if (editingTodo) {
       updateTodoMutation.mutate({ id: editingTodo.id, data: data as UpdateTodoDto });
     } else {
+      if (creatingTodoRef.current || createTodoMutation.isPending) {
+        return;
+      }
       const createData = data as CreateTodoDto;
       const normalizedTagIds = (Array.isArray(createData.tagIds) ? createData.tagIds : []).filter(Boolean);
       const createPayload: CreateTodoDto = {
@@ -455,13 +461,21 @@ export function DashboardPage() {
         tagIds: normalizedTagIds.length > 0 ? normalizedTagIds : undefined,
         cardId: activeTodoCard && normalizedTagIds.length === 0 ? activeTodoCard.id : undefined,
       };
-      createTodoMutation.mutate(createPayload);
+      creatingTodoRef.current = true;
+      createTodoMutation.mutate(createPayload, {
+        onSettled: () => {
+          creatingTodoRef.current = false;
+        },
+      });
     }
   };
 
   const handleSaveCard = (data: CreateCardDto | UpdateCardDto) => {
     if (editingCard) {
       updateCardMutation.mutate({ id: editingCard.id, data: data as UpdateCardDto });
+      return;
+    }
+    if (creatingCardRef.current || createCardMutation.isPending) {
       return;
     }
 
@@ -486,20 +500,49 @@ export function DashboardPage() {
       }
     }
 
-    createCardMutation.mutate({
-      ...(data as CreateCardDto),
-      x: nextX,
-      y: nextY,
-      w: DEFAULT_W,
-      h: DEFAULT_H,
-    });
+    creatingCardRef.current = true;
+    createCardMutation.mutate(
+      {
+        ...(data as CreateCardDto),
+        x: nextX,
+        y: nextY,
+        w: DEFAULT_W,
+        h: DEFAULT_H,
+      },
+      {
+        onSettled: () => {
+          creatingCardRef.current = false;
+        },
+      },
+    );
   };
 
   const handleSaveTag = (data: CreateTagDto | UpdateTagDto, id?: string) => {
     if (id) {
       updateTagMutation.mutate({ id, data: data as UpdateTagDto });
     } else {
-      createTagMutation.mutate(data as CreateTagDto);
+      if (creatingTagRef.current || createTagMutation.isPending) {
+        return;
+      }
+      creatingTagRef.current = true;
+      createTagMutation.mutate(data as CreateTagDto, {
+        onSettled: () => {
+          creatingTagRef.current = false;
+        },
+      });
+    }
+  };
+
+  const createTagSafely = async (payload: CreateTagDto) => {
+    if (creatingTagRef.current || createTagMutation.isPending) {
+      return undefined;
+    }
+    creatingTagRef.current = true;
+    try {
+      const res = await createTagMutation.mutateAsync(payload);
+      return res.data;
+    } finally {
+      creatingTagRef.current = false;
     }
   };
 
@@ -1028,11 +1071,9 @@ export function DashboardPage() {
           card={activeTodoCard}
           tags={tags}
           mentionCandidates={activeTodoCard?.participants ?? []}
+          isSaving={createTodoMutation.isPending || updateTodoMutation.isPending || createTagMutation.isPending}
           onSave={handleSaveTodo}
-          onCreateTag={async (name, color) => {
-            const res = await createTagMutation.mutateAsync({ name, color });
-            return res.data;
-          }}
+          onCreateTag={(name, color) => createTagSafely({ name, color })}
           defaultTagIds={defaultTagIds}
           onClose={() => {
             setShowTodoModal(false);
@@ -1047,11 +1088,9 @@ export function DashboardPage() {
           card={editingCard}
           cards={cards}
           tags={tags}
+          isSaving={createCardMutation.isPending || updateCardMutation.isPending || createTagMutation.isPending}
           onSave={handleSaveCard}
-          onCreateTag={async (name, color) => {
-            const res = await createTagMutation.mutateAsync({ name, color });
-            return res.data;
-          }}
+          onCreateTag={(name, color) => createTagSafely({ name, color })}
           onClose={() => {
             setShowCardModal(false);
             setEditingCard(null);
@@ -1199,6 +1238,7 @@ export function DashboardPage() {
       {showTagModal && (
         <TagModal
           tags={tags}
+          isSaving={createTagMutation.isPending || updateTagMutation.isPending || deleteTagMutation.isPending}
           onSave={handleSaveTag}
           onDelete={handleDeleteTag}
           onClose={() => setShowTagModal(false)}

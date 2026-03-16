@@ -10,6 +10,7 @@ interface CardModalProps {
   card: Card | null;
   cards: Card[];
   tags: Tag[];
+  isSaving?: boolean;
   onSave: (data: CreateCardDto | UpdateCardDto) => void;
   onCreateTag: (name: string, color: string) => Promise<Tag | void>;
   onClose: () => void;
@@ -25,7 +26,7 @@ function parseWorkspaceIds(input: string): string[] {
 
 type CardMode = 'personal' | 'shared' | 'tapd';
 
-export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: CardModalProps) {
+export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isSaving = false }: CardModalProps) {
   const currentUser = useAuthStore((state) => state.user);
 
   const [name, setName] = useState('');
@@ -232,6 +233,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
   };
 
   const handleCreateTag = async () => {
+    if (isSaving) return;
     if (!newTagName.trim()) return;
     try {
       const createdTag = await onCreateTag(newTagName.trim(), '#3b82f6');
@@ -246,6 +248,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     if (!name.trim()) return;
 
     let pluginConfig: Record<string, unknown> | undefined;
@@ -283,7 +286,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{card ? '编辑卡片' : '新建卡片'}</div>
-          <button className="modal-close" onClick={onClose}>
+          <button className="modal-close" onClick={onClose} disabled={isSaving}>
             ×
           </button>
         </div>
@@ -475,11 +478,11 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose }: C
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
+            <button type="button" className="btn btn-outline" onClick={onClose} disabled={isSaving}>
               取消
             </button>
-            <button type="submit" className="btn btn-primary">
-              {card ? '保存' : '创建'}
+            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              {isSaving ? '提交中...' : card ? '保存' : '创建'}
             </button>
           </div>
         </form>

@@ -10,6 +10,7 @@ interface TodoModalProps {
   card?: Card | null;
   tags: Tag[];
   mentionCandidates?: CardParticipant[];
+  isSaving?: boolean;
   onSave: (data: CreateTodoDto | UpdateTodoDto) => void;
   onCreateTag: (name: string, color: string) => Promise<Tag | void>;
   onClose: () => void;
@@ -127,7 +128,17 @@ function detectActiveMention(text: string, cursor: number): ActiveMention | null
   };
 }
 
-export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defaultTagIds = [], mentionCandidates = [] }: TodoModalProps) {
+export function TodoModal({
+  todo,
+  card,
+  tags,
+  onSave,
+  onCreateTag,
+  onClose,
+  defaultTagIds = [],
+  mentionCandidates = [],
+  isSaving = false,
+}: TodoModalProps) {
   const [content, setContent] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [executeAt, setExecuteAt] = useState('');
@@ -237,6 +248,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     if (!content.trim()) return;
 
     if (todo) {
@@ -264,6 +276,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
   };
 
   const handleCreateTag = async () => {
+    if (isSaving) return;
     if (!newTagName.trim()) return;
     try {
       const createdTag = await onCreateTag(newTagName.trim(), '#3b82f6');
@@ -330,7 +343,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{todo ? '编辑待办' : '新建待办'}</div>
-          <button className="modal-close" onClick={onClose}>
+          <button className="modal-close" onClick={onClose} disabled={isSaving}>
             ×
           </button>
         </div>
@@ -393,6 +406,7 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
                   placeholder="输入新标签名，回车添加..."
                   value={newTagName}
                   onChange={(e) => setNewTagName(e.target.value)}
+                  disabled={isSaving}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -415,11 +429,11 @@ export function TodoModal({ todo, card, tags, onSave, onCreateTag, onClose, defa
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose}>
+            <button type="button" className="btn btn-outline" onClick={onClose} disabled={isSaving}>
               取消
             </button>
-            <button type="submit" className="btn btn-primary">
-              {todo ? '保存' : '创建'}
+            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              {isSaving ? '提交中...' : todo ? '保存' : '创建'}
             </button>
           </div>
         </form>
