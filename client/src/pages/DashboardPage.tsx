@@ -15,6 +15,7 @@ import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
 import { TodoModal } from '../components/TodoModal';
 import { TagModal } from '../components/TagModal';
+import { sortTodosForCardDisplay } from '../lib/todoSort';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './DashboardPage.css';
@@ -55,17 +56,6 @@ function toRangeBoundaryIso(dateText: string, boundary: 'start' | 'end'): string
     date.setHours(0, 0, 0, 0);
   }
   return date.toISOString();
-}
-
-function toValidTimestamp(value?: string | null): number | null {
-  if (!value) {
-    return null;
-  }
-  const timestamp = new Date(value).getTime();
-  if (Number.isNaN(timestamp)) {
-    return null;
-  }
-  return timestamp;
 }
 
 interface GridLayoutItem {
@@ -914,41 +904,8 @@ export function DashboardPage() {
             <div key={card.id} className="grid-card-inner">
               {(() => {
                 const cardTodos = getTodosForCard(card);
-                const sortField = card.sortBy;
-                const sortOrder = card.sortOrder === 'asc' ? 1 : -1;
-                const sortedCardTodos = [...(Array.isArray(cardTodos) ? cardTodos : [])].sort(
-                  (left, right) => {
-                    const completedDiff = Number(isCompletedTodo(left)) - Number(isCompletedTodo(right));
-                    if (completedDiff !== 0) {
-                      return completedDiff;
-                    }
-
-                    const getSortValue = (todo: Todo) => {
-                      if (sortField === 'due_at') {
-                        return toValidTimestamp(todo.dueAt);
-                      }
-                      if (sortField === 'execute_at') {
-                        return toValidTimestamp(todo.executeAt);
-                      }
-                      return toValidTimestamp(todo.createdAt);
-                    };
-
-                    const leftValue = getSortValue(left);
-                    const rightValue = getSortValue(right);
-
-                    if (leftValue === rightValue) {
-                      const leftCreated = toValidTimestamp(left.createdAt) ?? 0;
-                      const rightCreated = toValidTimestamp(right.createdAt) ?? 0;
-                      return (leftCreated - rightCreated) * sortOrder;
-                    }
-                    if (leftValue === null) {
-                      return 1;
-                    }
-                    if (rightValue === null) {
-                      return -1;
-                    }
-                    return (leftValue - rightValue) * sortOrder;
-                  },
+                const sortedCardTodos = sortTodosForCardDisplay(
+                  Array.isArray(cardTodos) ? cardTodos : [],
                 );
                 const showCompleted = showCompletedByCard[card.id] ?? true;
                 const visibleCardTodos = showCompleted
