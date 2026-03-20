@@ -1,0 +1,22 @@
+{
+  "pages": [
+    "pages/launch/index",
+    "pages/email-auth/index",
+    "pages/bind/index",
+    "pages/home/index",
+    "pages/todo-editor/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "AI待办",
+    "navigationBarBackgroundColor": "#F4F8FF",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F4F8FF",
+    "backgroundTextStyle": "light",
+    "navigationStyle": "custom"
+  },
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

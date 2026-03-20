@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Card } from './card.entity';
 import { Tag } from './tag.entity';
+import { TodoCalendarSyncRecord } from './todo-calendar-sync.entity';
 import { TodoProgressEntry } from './todo-progress.entity';
 import { User } from './user.entity';
 
@@ -70,6 +71,9 @@ export class Todo {
 
   @OneToMany(() => TodoProgressEntry, (entry) => entry.todo)
   progressEntries!: TodoProgressEntry[];
+
+  @OneToMany(() => TodoCalendarSyncRecord, (record) => record.todo)
+  calendarSyncRecords!: TodoCalendarSyncRecord[];
 
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;

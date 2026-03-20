@@ -1,0 +1,15 @@
+<view class="container">
+  <custom-nav title="绑定微信账号" />
+  <view class="panel bind-panel">
+    <view class="desc">邮箱身份已就绪，绑定后可将待办同步到手机日历并收到系统提醒。</view>
+
+    <view class="field">
+      <view class="label">当前邮箱</view>
+      <view class="value">{{email || '-'}}</view>
+    </view>
+
+    <view class="error" wx:if="{{errorMessage}}">{{errorMessage}}</view>
+
+    <button class="btn-primary" bindtap="handleBind" loading="{{loading}}">授权并绑定</button>
+  </view>
+</view>

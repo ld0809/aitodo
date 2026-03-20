@@ -12,7 +12,9 @@ import { PluginsModule } from './plugins/plugins.module';
 import { TapdModule } from './tapd/tapd.module';
 import { Card } from './database/entities/card.entity';
 import { EmailCode } from './database/entities/email-code.entity';
+import { MiniappBinding } from './database/entities/miniapp-binding.entity';
 import { Tag } from './database/entities/tag.entity';
+import { TodoCalendarSyncRecord } from './database/entities/todo-calendar-sync.entity';
 import { Todo } from './database/entities/todo.entity';
 import { TodoProgressEntry } from './database/entities/todo-progress.entity';
 import { User } from './database/entities/user.entity';
@@ -20,6 +22,7 @@ import { TapdConfig } from './database/entities/tapd-config.entity';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
 import { CardUserLayout } from './database/entities/card-user-layout.entity';
+import { MiniappModule } from './miniapp/miniapp.module';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -49,7 +52,18 @@ function resolveTypeormSynchronize() {
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: resolveDatabasePath(),
-      entities: [User, EmailCode, Tag, Todo, TodoProgressEntry, Card, TapdConfig, CardUserLayout],
+      entities: [
+        User,
+        EmailCode,
+        Tag,
+        Todo,
+        TodoProgressEntry,
+        Card,
+        TapdConfig,
+        CardUserLayout,
+        MiniappBinding,
+        TodoCalendarSyncRecord,
+      ],
       synchronize: resolveTypeormSynchronize(),
       logging: false,
     }),
@@ -62,6 +76,7 @@ function resolveTypeormSynchronize() {
     TapdModule,
     ReportsModule,
     HealthModule,
+    MiniappModule,
   ],
 })
 export class AppModule {}

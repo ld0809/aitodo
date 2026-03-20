@@ -1,7 +1,9 @@
-import { Column, CreateDateColumn, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, ManyToMany, OneToMany, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Card } from './card.entity';
 import { EmailCode } from './email-code.entity';
+import { MiniappBinding } from './miniapp-binding.entity';
 import { Tag } from './tag.entity';
+import { TodoCalendarSyncRecord } from './todo-calendar-sync.entity';
 import { TodoProgressEntry } from './todo-progress.entity';
 import { Todo } from './todo.entity';
 
@@ -57,4 +59,10 @@ export class User {
 
   @ManyToMany(() => Todo, (todo) => todo.assignees)
   assignedTodos!: Todo[];
+
+  @OneToMany(() => TodoCalendarSyncRecord, (record) => record.user)
+  todoCalendarSyncRecords!: TodoCalendarSyncRecord[];
+
+  @OneToOne(() => MiniappBinding, (binding) => binding.user)
+  miniappBinding!: MiniappBinding | null;
 }

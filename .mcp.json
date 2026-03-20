@@ -1,21 +1,14 @@
 {
   "mcpServers": {
     "chrome-devtools": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "chrome-devtools-mcp@latest",
         "--autoConnect",
         "--channel=beta"
-      ]
+      ],
+      "env": {}
     }
-  },
-  "permissions": {
-    "allow": [
-      "Bash(node:*)",
-      "Bash(tmux list-sessions:*)",
-      "Bash(npm run:*)",
-      "Bash(pkill:*)",
-      "Bash(lsof:*)"
-    ]
   }
 }

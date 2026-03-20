@@ -1,0 +1,105 @@
+.container {
+  min-height: 100vh;
+  padding: 0 24rpx 36rpx;
+}
+
+.form-panel {
+  margin-top: 12rpx;
+  padding: 32rpx;
+}
+
+.field {
+  margin-bottom: 24rpx;
+}
+
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.label {
+  color: #607089;
+  font-size: 24rpx;
+}
+
+.field-action {
+  color: #2f7af8;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+textarea,
+.picker-value {
+  width: 100%;
+  min-height: 88rpx;
+  padding: 18rpx;
+  border-radius: 12rpx;
+  background: #f9fbff;
+  box-sizing: border-box;
+  margin-bottom: 10rpx;
+}
+
+.picker-value {
+  display: flex;
+  align-items: center;
+}
+
+.picker-placeholder {
+  color: #94a3b8;
+}
+
+.tag-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 10rpx;
+}
+
+.tag-chip {
+  margin: 0 12rpx 12rpx 0;
+  padding: 0 20rpx;
+  min-height: 68rpx;
+  border-radius: 999rpx;
+  background: #eef3ff;
+  color: #607089;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.tag-chip-active {
+  background: #2f7af8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.tag-create-row {
+  margin-top: 10rpx;
+}
+
+.tag-input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 18rpx;
+  line-height: 88rpx;
+  border-radius: 12rpx;
+  background: #f9fbff;
+  box-sizing: border-box;
+}
+
+.error-inline {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.error-inline {
+  color: #d93025;
+}
+
+.error {
+  margin-bottom: 16rpx;
+  color: #d93025;
+  font-size: 24rpx;
+}

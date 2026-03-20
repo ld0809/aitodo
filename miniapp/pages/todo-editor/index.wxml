@@ -1,0 +1,60 @@
+<view class="container">
+  <custom-nav title="{{navTitle}}" showBack="{{true}}" />
+  <view class="panel form-panel">
+    <view class="field">
+      <view class="label">待办内容</view>
+      <textarea value="{{content}}" bindinput="onContentInput" maxlength="500" placeholder="请输入待办内容" />
+    </view>
+
+    <view class="field">
+      <view class="field-head">
+        <view class="label">标签</view>
+      </view>
+      <view class="tag-chip-list">
+        <view
+          wx:for="{{tags}}"
+          wx:key="id"
+          class="tag-chip {{selectedTagId === item.id ? 'tag-chip-active' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="onTagSelect"
+        >
+          {{item.name}}
+        </view>
+      </view>
+      <view wx:if="{{tags.length === 0}}" class="picker-value picker-placeholder">请先创建标签</view>
+      <view wx:if="{{mode === 'create' && !selectedTagId}}" class="error-inline">新建待办必须选择正式标签</view>
+      <view class="tag-create-row">
+        <input
+          class="tag-input"
+          value="{{newTagName}}"
+          bindinput="onNewTagInput"
+          bindblur="onNewTagBlur"
+          placeholder="输入文字，失焦后自动创建新标签"
+          maxlength="32"
+        />
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-head">
+        <view class="label">截止时间</view>
+        <view wx:if="{{dueDate}}" class="field-action" bindtap="clearDueDateTime">清空</view>
+      </view>
+      <picker
+        mode="multiSelector"
+        range="{{duePickerColumns}}"
+        value="{{duePickerValue}}"
+        bindchange="onDuePickerChange"
+        bindcolumnchange="onDuePickerColumnChange"
+      >
+        <view class="picker-value {{!dueDate ? 'picker-placeholder' : ''}}">
+          {{dueDisplay}}
+        </view>
+      </picker>
+    </view>
+
+    <view class="error" wx:if="{{errorMessage}}">{{errorMessage}}</view>
+
+    <button class="btn-primary" bindtap="handleSave" loading="{{loading}}">保存</button>
+  </view>
+</view>

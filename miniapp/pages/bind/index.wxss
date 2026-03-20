@@ -1,0 +1,38 @@
+.container {
+  min-height: 100vh;
+  padding: 0 24rpx 36rpx;
+}
+
+.bind-panel {
+  margin-top: 12rpx;
+  padding: 40rpx;
+}
+
+.desc {
+  color: #607089;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.field {
+  margin: 30rpx 0;
+  padding: 22rpx 24rpx;
+  border-radius: 14rpx;
+  background: #f9fbff;
+}
+
+.label {
+  color: #607089;
+  font-size: 24rpx;
+}
+
+.value {
+  margin-top: 10rpx;
+  font-size: 28rpx;
+}
+
+.error {
+  margin-bottom: 16rpx;
+  color: #d93025;
+  font-size: 24rpx;
+}

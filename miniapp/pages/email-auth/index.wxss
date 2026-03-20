@@ -1,0 +1,90 @@
+.container {
+  min-height: 100vh;
+  padding: 0 24rpx 36rpx;
+  box-sizing: border-box;
+  background: #f4f8ff;
+}
+
+.auth-panel {
+  margin-top: 12rpx;
+  padding: 36rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 24rpx rgba(31, 42, 55, 0.08);
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: 28rpx;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 14rpx;
+  background: #eef3ff;
+  color: #607089;
+}
+
+.tab + .tab {
+  margin-left: 16rpx;
+}
+
+.tab-active {
+  background: #2f7af8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.field {
+  margin-bottom: 22rpx;
+}
+
+.label {
+  margin-bottom: 8rpx;
+  color: #607089;
+  font-size: 24rpx;
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 88rpx;
+  padding: 0 20rpx;
+  line-height: 88rpx;
+  border-radius: 12rpx;
+  background: #f9fbff;
+  color: #1f2a37;
+}
+
+.verify-row {
+  display: flex;
+  align-items: center;
+}
+
+.verify-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.resend-btn {
+  width: 180rpx;
+  min-height: 88rpx;
+  margin-left: 12rpx;
+  padding: 0;
+}
+
+.error {
+  margin-bottom: 16rpx;
+  color: #d93025;
+  font-size: 24rpx;
+}
+
+.hint {
+  margin-top: 22rpx;
+  color: #607089;
+  font-size: 24rpx;
+  text-align: center;
+}

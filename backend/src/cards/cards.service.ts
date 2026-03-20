@@ -448,7 +448,8 @@ export class CardsService {
   }
 
   private toCardResponse(card: Card) {
-    const { layoutsJson: _, ...restCard } = card as Card & { layoutsJson?: string | null };
+    const restCard = { ...(card as Card & { layoutsJson?: string | null }) };
+    delete restCard.layoutsJson;
     return {
       ...restCard,
       participants: (card.participants ?? []).map((participant) => ({

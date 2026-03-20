@@ -1,0 +1,19 @@
+<view class="nav-shell" style="padding-top: {{statusBarHeight}}px; background: {{background}};">
+  <view class="nav-bar" style="height: {{navBarHeight}}px;">
+    <view class="nav-side" style="width: {{sideWidth}}px;">
+      <view wx:if="{{showBack}}" class="icon-btn" bindtap="handleBack">
+        <text class="icon-text">‹</text>
+      </view>
+      <slot wx:else name="left"></slot>
+    </view>
+
+    <view class="nav-center">
+      <view class="nav-title">{{title}}</view>
+      <view wx:if="{{subtitle}}" class="nav-subtitle">{{subtitle}}</view>
+    </view>
+
+    <view class="nav-side nav-side-right" style="width: {{sideWidth}}px;">
+      <slot name="right"></slot>
+    </view>
+  </view>
+</view>

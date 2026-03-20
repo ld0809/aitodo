@@ -1,0 +1,90 @@
+<view class="page">
+  <custom-nav title="AI待办">
+    <view slot="left" class="nav-icon-btn" bindtap="toggleDrawer">☰</view>
+  </custom-nav>
+
+  <view class="tag-row">
+    <view class="tag-indicator">当前标签：{{selectedTagName}}</view>
+    <view class="filter-row">
+      <text class="filter-label">仅看未完成</text>
+      <switch checked="{{showUncompletedOnly}}" bindchange="onToggleUncompleted" color="#2F7AF8" />
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="todo-list" refresher-enabled bindrefresherrefresh="onPullDownRefresh" refresher-triggered="{{refreshing}}">
+    <view wx:if="{{loading}}" class="loading">加载中...</view>
+
+    <view wx:if="{{emptyVisible}}" class="empty panel">暂无待办</view>
+
+    <view
+      wx:for="{{todos}}"
+      wx:key="id"
+      class="todo-item panel"
+      bindtap="openTodoEditor"
+      data-todo-id="{{item.id}}"
+      data-content="{{item.content}}"
+      data-due-at="{{item.dueAt}}"
+      data-tag-id="{{item._tagId}}"
+    >
+      <view class="todo-main">
+        <checkbox
+          class="todo-checkbox"
+          checked="{{item._completed}}"
+          bindtap="noop"
+          bindchange="onTodoCompleteChange"
+          data-id="{{item.id}}"
+          data-completed="{{item._completed}}"
+        />
+        <view class="todo-content {{item._doneClass}}">{{item.content}}</view>
+      </view>
+      <view class="todo-meta">
+        <text>{{item._tagName}}</text>
+        <text>{{item._dueTextDisplay}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="fab" bindtap="openCreateTodo">
+    <text class="fab-icon">＋</text>
+  </view>
+
+  <view wx:if="{{drawerVisible}}" class="drawer-mask" bindtap="closeDrawer"></view>
+  <view class="drawer {{drawerClass}}">
+    <view class="drawer-content" style="{{drawerContentStyle}}">
+      <view class="drawer-toolbar">
+        <view class="nickname">{{userNickname}}</view>
+        <view class="drawer-actions">
+          <view class="sync-icon-btn {{syncing ? 'sync-icon-btn-disabled' : ''}}" bindtap="handleSync">
+            <text class="sync-icon">{{syncing ? '…' : '↻'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="tag-list">
+        <view
+          wx:for="{{tags}}"
+          wx:key="id"
+          class="tag-item {{item._activeClass}} {{item._draggingClass}}"
+          bindtap="selectTag"
+          data-id="{{item.id}}"
+          data-name="{{item.name}}"
+          data-index="{{index}}"
+          bindtouchstart="onTagTouchStart"
+          bindtouchmove="onTagTouchMove"
+          bindtouchend="onTagTouchEnd"
+        >
+          {{item.name}}
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{syncResultVisible}}" class="sheet-mask" bindtap="closeSyncResult"></view>
+  <view class="sync-sheet {{syncSheetClass}}">
+    <view class="sheet-title">同步结果</view>
+    <view class="sheet-item">新增：{{syncResult.added}}</view>
+    <view class="sheet-item">跳过：{{syncResult.skipped}}</view>
+    <view class="sheet-item">失败：{{syncResult.failed}}</view>
+    <button class="btn-secondary" bindtap="closeSyncResult">我知道了</button>
+  </view>
+</view>

@@ -1,0 +1,7 @@
+<view class="container">
+  <view class="panel hero">
+    <view class="title">AI待办</view>
+    <view class="slogan">简单快捷，不漏待办</view>
+    <button class="btn-primary start-btn" loading="{{loading}}" bindtap="handleStart">开始使用</button>
+  </view>
+</view>

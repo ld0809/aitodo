@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Card } from '../database/entities/card.entity';
 import { Tag } from '../database/entities/tag.entity';
+import { TodoCalendarSyncRecord } from '../database/entities/todo-calendar-sync.entity';
 import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
@@ -22,6 +23,8 @@ export class TodosService {
     private readonly todoProgressRepository: Repository<TodoProgressEntry>,
     @InjectRepository(Card)
     private readonly cardRepository: Repository<Card>,
+    @InjectRepository(TodoCalendarSyncRecord)
+    private readonly todoCalendarSyncRecordRepository: Repository<TodoCalendarSyncRecord>,
   ) {}
 
   async create(userId: string, dto: CreateTodoDto) {
@@ -158,12 +161,18 @@ export class TodosService {
       throw new ForbiddenException('only todo owner can update todo');
     }
 
+    let dueAtChanged = false;
+
     if (dto.content !== undefined) {
       todo.content = dto.content;
       await this.refreshSharedTodoAssignees(todo);
     }
     if (dto.dueAt !== undefined) {
-      todo.dueAt = new Date(dto.dueAt);
+      const nextDueAt = new Date(dto.dueAt);
+      const previousDueAtTs = todo.dueAt ? new Date(todo.dueAt).getTime() : null;
+      const nextDueAtTs = nextDueAt.getTime();
+      dueAtChanged = previousDueAtTs !== nextDueAtTs;
+      todo.dueAt = nextDueAt;
     }
     if (dto.executeAt !== undefined) {
       todo.executeAt = new Date(dto.executeAt);
@@ -176,6 +185,9 @@ export class TodosService {
     }
 
     await this.todoRepository.save(todo);
+    if (dueAtChanged) {
+      await this.todoCalendarSyncRecordRepository.delete({ todoId: todo.id });
+    }
     return this.findOne(userId, id);
   }
 
@@ -201,6 +213,7 @@ export class TodosService {
 
     todo.deletedAt = new Date();
     await this.todoRepository.save(todo);
+    await this.todoCalendarSyncRecordRepository.delete({ todoId: todo.id });
 
     return { id };
   }

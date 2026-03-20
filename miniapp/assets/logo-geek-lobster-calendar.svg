@@ -1,0 +1,67 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="120" x2="860" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF4EE"/>
+      <stop offset="0.55" stop-color="#F6F9FF"/>
+      <stop offset="1" stop-color="#EAF4FF"/>
+    </linearGradient>
+    <linearGradient id="shell" x1="290" y1="238" x2="746" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF744B"/>
+      <stop offset="1" stop-color="#E6452F"/>
+    </linearGradient>
+    <linearGradient id="calendar" x1="395" y1="388" x2="638" y2="686" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EFF5FF"/>
+    </linearGradient>
+    <filter id="shadow" x="134" y="142" width="756" height="756" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="28"/>
+      <feGaussianBlur stdDeviation="34"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.121569 0 0 0 0 0.164706 0 0 0 0 0.223529 0 0 0 0.14 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="240" fill="url(#bg)"/>
+  <circle cx="840" cy="214" r="76" fill="#DDF3FF"/>
+  <circle cx="208" cy="792" r="88" fill="#FFE8D8"/>
+
+  <g filter="url(#shadow)">
+    <rect x="202" y="210" width="620" height="620" rx="196" fill="#FFFFFF"/>
+  </g>
+
+  <g>
+    <path d="M332 312C336 277 365 248 401 248H623C659 248 688 277 692 312L706 430H318L332 312Z" fill="url(#shell)"/>
+    <rect x="300" y="372" width="424" height="358" rx="138" fill="url(#shell)"/>
+
+    <path d="M244 430C192 406 164 351 182 303C198 260 243 242 286 256C281 272 282 292 292 314C301 334 316 349 333 358C316 406 282 447 244 430Z" fill="#F15A3D"/>
+    <path d="M780 430C832 406 860 351 842 303C826 260 781 242 738 256C743 272 742 292 732 314C723 334 708 349 691 358C708 406 742 447 780 430Z" fill="#F15A3D"/>
+
+    <path d="M248 301C266 285 294 287 311 305C331 326 334 360 319 384C289 381 254 359 232 334C229 322 236 311 248 301Z" fill="#C92F2D"/>
+    <path d="M776 301C758 285 730 287 713 305C693 326 690 360 705 384C735 381 770 359 792 334C795 322 788 311 776 301Z" fill="#C92F2D"/>
+
+    <rect x="390" y="388" width="244" height="300" rx="46" fill="url(#calendar)" stroke="#D7E6FF" stroke-width="10"/>
+    <rect x="390" y="388" width="244" height="76" rx="46" fill="#2F7AF8"/>
+    <circle cx="446" cy="388" r="22" fill="#FFFFFF"/>
+    <circle cx="578" cy="388" r="22" fill="#FFFFFF"/>
+    <rect x="436" y="516" width="42" height="42" rx="12" fill="#D8E8FF"/>
+    <rect x="490" y="516" width="42" height="42" rx="12" fill="#D8E8FF"/>
+    <rect x="544" y="516" width="42" height="42" rx="12" fill="#D8E8FF"/>
+    <rect x="436" y="572" width="42" height="42" rx="12" fill="#D8E8FF"/>
+    <rect x="490" y="572" width="42" height="42" rx="12" fill="#D8E8FF"/>
+    <path d="M547 610L515 642L473 601" stroke="#19B36B" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M450 474C450 441 477 414 510 414C543 414 570 441 570 474" stroke="#163A74" stroke-width="18" stroke-linecap="round"/>
+    <circle cx="468" cy="474" r="18" fill="#163A74"/>
+    <circle cx="552" cy="474" r="18" fill="#163A74"/>
+
+    <path d="M420 330L398 274" stroke="#1C6EE8" stroke-width="14" stroke-linecap="round"/>
+    <path d="M604 330L626 274" stroke="#1C6EE8" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="392" cy="258" r="18" fill="#19B36B"/>
+    <circle cx="632" cy="258" r="18" fill="#19B36B"/>
+
+    <path d="M364 744C389 720 425 706 466 706H558C599 706 635 720 660 744" stroke="#C92F2D" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>
