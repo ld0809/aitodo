@@ -16,6 +16,7 @@ CONFIG_BACKUP_DIR="${CONFIG_BACKUP_DIR:-$APP_ROOT/configs_backup}"
 BACKEND_ENV_BACKUP_PATH="${BACKEND_ENV_BACKUP_PATH:-$CONFIG_BACKUP_DIR/.env}"
 CLIENT_ENV_PRODUCTION_BACKUP_PATH="${CLIENT_ENV_PRODUCTION_BACKUP_PATH:-$CONFIG_BACKUP_DIR/client.env.production}"
 CLIENT_ENV_BACKUP_PATH="${CLIENT_ENV_BACKUP_PATH:-$CONFIG_BACKUP_DIR/client.env}"
+MIGRATION_NAME="${MIGRATION_NAME:-auto_schema_update}"
 
 SKIP_PUSH=false
 DRY_RUN=false
@@ -38,6 +39,7 @@ Options:
   --backend-env <path>      Default: $BACKEND_ENV_BACKUP_PATH
   --client-env-prod <path>  Default: $CLIENT_ENV_PRODUCTION_BACKUP_PATH
   --client-env <path>       Default: $CLIENT_ENV_BACKUP_PATH
+  --migration-name <name>   Default: $MIGRATION_NAME
   --skip-push               Do not run local git push
   --dry-run                 Print resolved parameters only
   -h, --help                Show help
@@ -98,6 +100,10 @@ while [[ $# -gt 0 ]]; do
       CLIENT_ENV_BACKUP_PATH="${2:-}"
       shift 2
       ;;
+    --migration-name)
+      MIGRATION_NAME="${2:-}"
+      shift 2
+      ;;
     --skip-push)
       SKIP_PUSH=true
       shift
@@ -138,18 +144,71 @@ if [[ "$DRY_RUN" == true ]]; then
   echo "  backend_env:   $BACKEND_ENV_BACKUP_PATH"
   echo "  client_env:    $CLIENT_ENV_BACKUP_PATH"
   echo "  client_env_p:  $CLIENT_ENV_PRODUCTION_BACKUP_PATH"
+  echo "  migration:     $MIGRATION_NAME"
   echo "  skip_push:     $SKIP_PUSH"
   exit 0
 fi
 
 cd "$ROOT_DIR"
 
+if ! git diff --cached --quiet; then
+  echo "[deploy] staged changes detected; auto-commit of generated migration would be unsafe" >&2
+  echo "[deploy] please commit or unstage them first" >&2
+  exit 1
+fi
+
+echo "[deploy] checking schema migrations"
+set +e
+MIGRATION_CHECK_OUTPUT="$(cd "$ROOT_DIR/backend" && npm run db:migration:generate -- --check 2>&1)"
+MIGRATION_CHECK_STATUS=$?
+set -e
+echo "$MIGRATION_CHECK_OUTPUT"
+
+case "$MIGRATION_CHECK_STATUS" in
+  0)
+    echo "[deploy] schema migrations are up-to-date"
+    ;;
+  2)
+    echo "[deploy] pending schema change detected; generating migration"
+    MIGRATION_GENERATE_OUTPUT="$(cd "$ROOT_DIR/backend" && npm run db:migration:generate -- --name "$MIGRATION_NAME" 2>&1)"
+    echo "$MIGRATION_GENERATE_OUTPUT"
+
+    GENERATED_MIGRATION_FILE="$(echo "$MIGRATION_GENERATE_OUTPUT" | sed -n 's/^\[db:migration\] generated: //p' | tail -n 1)"
+    if [[ -z "$GENERATED_MIGRATION_FILE" ]]; then
+      echo "[deploy] failed to parse generated migration file path" >&2
+      exit 1
+    fi
+
+    if [[ "$GENERATED_MIGRATION_FILE" == "$ROOT_DIR/"* ]]; then
+      GENERATED_MIGRATION_FILE="${GENERATED_MIGRATION_FILE#$ROOT_DIR/}"
+    fi
+
+    if [[ ! -f "$ROOT_DIR/$GENERATED_MIGRATION_FILE" ]]; then
+      echo "[deploy] generated migration file not found: $GENERATED_MIGRATION_FILE" >&2
+      exit 1
+    fi
+
+    git add "$GENERATED_MIGRATION_FILE"
+    git commit -m "chore(db): add migration $(basename "$GENERATED_MIGRATION_FILE" .sql)"
+
+    if [[ "$SKIP_PUSH" == true ]]; then
+      echo "[deploy] generated a new migration commit but --skip-push was set" >&2
+      echo "[deploy] push the new commit first, then rerun deploy" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "[deploy] schema migration check failed" >&2
+    exit "$MIGRATION_CHECK_STATUS"
+    ;;
+esac
+
 LOCAL_SHA="$(git rev-parse --short HEAD)"
 echo "[deploy] local_sha=$LOCAL_SHA"
 
 if [[ "$SKIP_PUSH" != true ]]; then
   echo "[deploy] pushing branch: $DEPLOY_BRANCH"
-  git push origin "$DEPLOY_BRANCH"
+  git push origin "HEAD:$DEPLOY_BRANCH"
 fi
 
 SSH_TARGET="${DEPLOY_USER}@${DEPLOY_HOST}"

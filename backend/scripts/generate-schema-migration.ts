@@ -1,22 +1,18 @@
 import 'dotenv/config';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { DataSource } from 'typeorm';
-import { CardUserLayout } from '../src/database/entities/card-user-layout.entity';
-import { Card } from '../src/database/entities/card.entity';
-import { EmailCode } from '../src/database/entities/email-code.entity';
-import { Tag } from '../src/database/entities/tag.entity';
-import { TapdConfig } from '../src/database/entities/tapd-config.entity';
-import { TodoProgressEntry } from '../src/database/entities/todo-progress.entity';
-import { Todo } from '../src/database/entities/todo.entity';
-import { User } from '../src/database/entities/user.entity';
+import { APP_ENTITIES } from '../src/database/entity-list';
 
 type Options = {
-  dbPath: string;
+  baselineDbPath?: string;
   outputDir: string;
   name?: string;
   help: boolean;
   checkOnly: boolean;
+  baselineSnapshot: boolean;
 };
 
 type LoggedQuery = {
@@ -29,10 +25,10 @@ const BACKEND_DIR = resolve(SCRIPT_DIR, '..');
 
 function parseArgs(argv: string[]): Options {
   const options: Options = {
-    dbPath: process.env.DATABASE_PATH ?? resolve(BACKEND_DIR, 'data', 'app.db'),
     outputDir: resolve(BACKEND_DIR, 'migrations', 'sql'),
     help: false,
     checkOnly: false,
+    baselineSnapshot: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -43,7 +39,7 @@ function parseArgs(argv: string[]): Options {
       continue;
     }
     if (arg === '--db') {
-      options.dbPath = argv[index + 1];
+      options.baselineDbPath = argv[index + 1];
       index += 1;
       continue;
     }
@@ -54,6 +50,10 @@ function parseArgs(argv: string[]): Options {
     }
     if (arg === '--check') {
       options.checkOnly = true;
+      continue;
+    }
+    if (arg === '--baseline') {
+      options.baselineSnapshot = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -70,13 +70,19 @@ function printUsage() {
   console.log(
     [
       'Usage:',
-      '  npm run db:migration:generate -- --name <migration_name> [--db <db_path>] [--dir <output_dir>]',
-      '  ts-node ./scripts/generate-schema-migration.ts --check [--db <db_path>]',
+      '  npm run db:migration:generate -- --name <migration_name> [--db <baseline_db_path>] [--dir <output_dir>]',
+      '  npm run db:migration:generate -- --name <migration_name> --baseline',
+      '  ts-node ./scripts/generate-schema-migration.ts --check [--db <baseline_db_path>]',
       '',
       'Examples:',
       '  npm run db:migration:generate -- --name create_shared_layout_table',
-      '  npm run db:migration:generate -- --name add_due_index --db ./data/app.db',
+      '  npm run db:migration:generate -- --name schema_baseline --baseline',
+      '  npm run db:migration:generate -- --name add_due_index --db ./data/baseline.db',
       '  ts-node ./scripts/generate-schema-migration.ts --check',
+      '',
+      'Notes:',
+      '  - Without --db, the script builds a temporary baseline database from committed SQL migrations.',
+      '  - This avoids false negatives caused by local TypeORM synchronize drift.',
     ].join('\n'),
   );
 }
@@ -128,7 +134,15 @@ function toStatements(queries: LoggedQuery[]) {
   return queries
     .map((item) => inlineParameters(item.query, item.parameters).trim())
     .filter((item) => item.length > 0)
+    .map((item) => ensureIdempotentCreateStatement(item))
     .map((item) => `${item.replace(/;+\s*$/g, '')};`);
+}
+
+function ensureIdempotentCreateStatement(statement: string) {
+  return statement
+    .replace(/^CREATE TABLE\s+(?!IF NOT EXISTS)/i, 'CREATE TABLE IF NOT EXISTS ')
+    .replace(/^CREATE UNIQUE INDEX\s+(?!IF NOT EXISTS)/i, 'CREATE UNIQUE INDEX IF NOT EXISTS ')
+    .replace(/^CREATE INDEX\s+(?!IF NOT EXISTS)/i, 'CREATE INDEX IF NOT EXISTS ');
 }
 
 function buildTimestamp() {
@@ -142,6 +156,75 @@ function buildTimestamp() {
   return `${yyyy}${mm}${dd}T${hh}${min}${ss}Z`;
 }
 
+function buildBaselineFromMigrations(dbPath: string, migrationsDir: string) {
+  const applyScriptPath = resolve(BACKEND_DIR, 'scripts', 'apply-sql-migrations.js');
+  const result = spawnSync(process.execPath, [applyScriptPath, '--db', dbPath, '--dir', migrationsDir], {
+    cwd: BACKEND_DIR,
+    encoding: 'utf8',
+  });
+
+  if (result.status !== 0) {
+    const stderr = result.stderr?.trim();
+    const stdout = result.stdout?.trim();
+    throw new Error(stderr || stdout || 'failed to build baseline database from migrations');
+  }
+}
+
+async function buildBaselineSnapshotStatements() {
+  const tempDir = mkdtempSync(resolve(tmpdir(), 'aitodo-schema-snapshot-'));
+  const dbPath = resolve(tempDir, 'schema-snapshot.db');
+  const dataSource = new DataSource({
+    type: 'better-sqlite3',
+    database: dbPath,
+    entities: APP_ENTITIES,
+    synchronize: true,
+    logging: false,
+  });
+
+  try {
+    await dataSource.initialize();
+    const rows = (await dataSource.query(`
+      SELECT type, name, sql
+      FROM sqlite_master
+      WHERE sql IS NOT NULL
+        AND name NOT LIKE 'sqlite_%'
+        AND name != 'schema_migrations'
+      ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
+    `)) as Array<{ sql: string }>;
+
+    return rows
+      .map((row) => row.sql.trim())
+      .filter((statement) => statement.length > 0)
+      .map((statement) => ensureIdempotentCreateStatement(statement))
+      .map((statement) => `${statement.replace(/;+\s*$/g, '')};`);
+  } finally {
+    if (dataSource.isInitialized) {
+      await dataSource.destroy();
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+function prepareBaselineDatabase(options: Options) {
+  if (options.baselineDbPath) {
+    return {
+      dbPath: options.baselineDbPath,
+      cleanup: () => {},
+    };
+  }
+
+  const tempDir = mkdtempSync(resolve(tmpdir(), 'aitodo-schema-baseline-'));
+  const dbPath = resolve(tempDir, 'baseline.db');
+  buildBaselineFromMigrations(dbPath, options.outputDir);
+
+  return {
+    dbPath,
+    cleanup: () => {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
@@ -149,18 +232,31 @@ async function main() {
     return;
   }
 
-  const dataSource = new DataSource({
-    type: 'better-sqlite3',
-    database: options.dbPath,
-    entities: [User, EmailCode, Tag, Todo, TodoProgressEntry, Card, TapdConfig, CardUserLayout],
-    synchronize: false,
-    logging: false,
-  });
+  const baseline = options.baselineSnapshot
+    ? {
+        dbPath: '',
+        cleanup: () => {},
+      }
+    : prepareBaselineDatabase(options);
+  const dataSource = options.baselineSnapshot
+    ? null
+    : new DataSource({
+        type: 'better-sqlite3',
+        database: baseline.dbPath,
+        entities: APP_ENTITIES,
+        synchronize: false,
+        logging: false,
+      });
 
   try {
-    await dataSource.initialize();
-    const sqlInMemory = await dataSource.driver.createSchemaBuilder().log();
-    const statements = toStatements(sqlInMemory.upQueries);
+    const statements = options.baselineSnapshot
+      ? await buildBaselineSnapshotStatements()
+      : await (async () => {
+          const activeDataSource = dataSource as DataSource;
+          await activeDataSource.initialize();
+          const sqlInMemory = await activeDataSource.driver.createSchemaBuilder().log();
+          return toStatements(sqlInMemory.upQueries);
+        })();
 
     if (options.checkOnly) {
       if (statements.length > 0) {
@@ -200,9 +296,10 @@ async function main() {
     console.log(`[db:migration] generated: ${filePath}`);
     console.log(`[db:migration] statements: ${statements.length}`);
   } finally {
-    if (dataSource.isInitialized) {
+    if (dataSource?.isInitialized) {
       await dataSource.destroy();
     }
+    baseline.cleanup();
   }
 }
 

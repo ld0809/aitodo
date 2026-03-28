@@ -78,11 +78,18 @@
 
 ### 1. 本地生成 SQL 迁移文件
 
-当 `backend/src/database/entities` 有结构变更时，先生成 SQL 文件并提交：
+当 `backend/src/database/entities` 有结构变更时，可以先手动生成 SQL 文件并提交：
 
 ```bash
 cd backend
 npm run db:migration:generate -- --name <change_name>
+```
+
+如果要给历史上依赖 TypeORM `synchronize` 的结构补一份可追溯基线，可执行：
+
+```bash
+cd backend
+npm run db:migration:generate -- --name schema_baseline --baseline
 ```
 
 生成目录：`backend/migrations/sql/*.sql`
@@ -105,11 +112,18 @@ scripts/deploy-release.sh
 ```
 
 发布脚本会自动完成：
-1. 推送当前分支到远端（默认 `main`）
-2. 服务器创建新 release 目录并构建前后端
-3. 执行 `backend/migrations/sql` 下未应用的 SQL
-4. 切换 `/opt/aitodo/current` 软链并重启 PM2
-5. 做健康检查，失败自动回滚到上一个 release
+1. 本地先检查 schema 是否存在未提交的结构变更
+2. 如有变更，自动生成 `backend/migrations/sql/*.sql`
+3. 自动将新生成的 migration 文件提交到 git，并推送到远端分支（默认 `main`）
+4. 服务器创建新 release 目录并构建前后端
+5. 执行 `backend/migrations/sql` 下未应用的 SQL
+6. 切换 `/opt/aitodo/current` 软链并重启 PM2
+7. 做健康检查，失败自动回滚到上一个 release
+
+注意：
+- 发布脚本只会自动提交新生成的 migration 文件
+- 若本地已有 staged changes，发布脚本会中止，避免误把其他改动一起提交
+- 可通过 `--migration-name <name>` 指定自动生成 migration 的名称，默认是 `auto_schema_update`
 
 环境文件读取顺序：
 1. 优先使用服务器备份配置目录中的文件，默认：
