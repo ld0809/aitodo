@@ -70,6 +70,7 @@ const dragFreeCompactor = {
   ...noCompactor,
   allowOverlap: true,
 };
+const TAPD_CARD_AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 function intersectsHorizontally(left: GridLayoutItem, right: GridLayoutItem): boolean {
   return left.x < right.x + right.w && right.x < left.x + left.w;
@@ -242,10 +243,18 @@ export function DashboardPage() {
     .map((card: Card) => `${card.id}:${card.updatedAt}`)
     .sort()
     .join('|');
+  const hasRemoteCards = (Array.isArray(cards) ? cards : []).some(
+    (card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared',
+  );
+  const hasTapdCards = (Array.isArray(cards) ? cards : []).some(
+    (card: Card) => card.pluginType === 'tapd',
+  );
 
   const { data: remoteCardTodos = {} } = useQuery({
     queryKey: ['card-todos', userScope, remoteCardsKey],
-    enabled: (Array.isArray(cards) ? cards : []).some((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared'),
+    enabled: hasRemoteCards,
+    refetchInterval: hasTapdCards ? TAPD_CARD_AUTO_REFRESH_INTERVAL_MS : false,
+    refetchIntervalInBackground: hasTapdCards,
     queryFn: async () => {
       const targetCards = (Array.isArray(cards) ? cards : []).filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared');
       const settled = await Promise.allSettled(

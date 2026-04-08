@@ -2,6 +2,28 @@ import { expect, test } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 
+function injectAuthStorage() {
+  return () => {
+    const authData = {
+      state: {
+        user: {
+          id: 'phase5-user',
+          email: 'phase5-user@test.com',
+          emailVerified: true,
+          status: 'active',
+          createdAt: '',
+          updatedAt: '',
+        },
+        accessToken: 'phase5-token',
+        isAuthenticated: true,
+      },
+      version: 0,
+    };
+    localStorage.setItem('auth-storage', JSON.stringify(authData));
+    localStorage.setItem('accessToken', 'phase5-token');
+  };
+}
+
 test('phase5 landing page should show feature highlights and auth entries', async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on('console', (message) => {
@@ -53,4 +75,118 @@ test('login failure should stay on page and show server error', async ({ page })
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator('.error-message')).toContainText('邮箱或密码错误');
   await expect(page.locator('input[type="email"]')).toHaveValue('wrong@example.com');
+});
+
+test('tapd card should auto refresh every 5 minutes', async ({ page }) => {
+  const now = new Date().toISOString();
+  let tapdTodosRequestCount = 0;
+
+  await page.clock.install({ time: new Date('2026-04-08T10:00:00.000Z') });
+
+  await page.route(/\/users\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          id: 'phase5-user',
+          email: 'phase5-user@test.com',
+          emailVerified: true,
+          status: 'active',
+          target: '',
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    });
+  });
+
+  await page.route(/\/todos\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [],
+      }),
+    });
+  });
+
+  await page.route(/\/tags\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [],
+      }),
+    });
+  });
+
+  await page.route(/\/cards\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 'tapd-card-refresh',
+            userId: 'phase5-user',
+            name: 'TAPD 自动刷新卡片',
+            cardType: 'personal',
+            sortBy: 'created_at',
+            sortOrder: 'desc',
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 3,
+            pluginType: 'tapd',
+            tags: [],
+            participants: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route(/\/cards\/tapd-card-refresh\/todos$/, async (route) => {
+    tapdTodosRequestCount += 1;
+    const content = tapdTodosRequestCount === 1 ? '旧 TAPD 数据' : '刷新后的 TAPD 数据';
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: `tapd-todo-${tapdTodosRequestCount}`,
+            content,
+            status: 'todo',
+            tags: [],
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  await expect(page.getByText('旧 TAPD 数据')).toBeVisible();
+  expect(tapdTodosRequestCount).toBe(1);
+
+  await page.clock.fastForward(300_000);
+
+  await expect.poll(() => tapdTodosRequestCount).toBe(2);
+  await expect(page.getByText('刷新后的 TAPD 数据')).toBeVisible();
 });
