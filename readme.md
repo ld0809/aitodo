@@ -137,6 +137,28 @@ scripts/deploy-release.sh
 - 请改用 `backend/.env.example`、`client/.env.example` 作为模板
 - 你当前服务器的后端环境文件可放在 `/opt/aitodo/configs_backup/.env`
 
+### 4. 仅重启线上服务
+
+如果只是重启当前线上后端进程，不发布新代码，可在仓库根目录执行：
+
+```bash
+scripts/restart-production.sh
+```
+
+脚本会：
+1. 通过 SSH 连接线上服务器
+2. 执行 `pm2 restart aitodo-backend --update-env`
+3. 执行 `pm2 save`
+4. 轮询 `http://127.0.0.1:3002/api/v1/health`，确认服务恢复
+
+常用参数：
+
+```bash
+scripts/restart-production.sh --dry-run
+scripts/restart-production.sh --skip-health-check
+scripts/restart-production.sh --host 118.89.115.242 --user ubuntu --pm2-app aitodo-backend
+```
+
 ## 邮箱验证码发送配置（SMTP）
 
 后端会在 `POST /auth/send-email-code` 真实发送验证码邮件。请在 `backend/.env`（以及线上 `backend/.env`）填写：
