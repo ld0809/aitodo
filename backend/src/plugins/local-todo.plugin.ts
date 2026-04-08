@@ -98,6 +98,7 @@ export class LocalTodoPlugin implements DataSourcePlugin {
     return items.map<CardTodoView>((item) => ({
       id: item.id,
       content: item.content,
+      handlerNames: item.handlerNames,
       dueAt: item.dueAt,
       executeAt: item.executeAt,
       status: item.status,

@@ -31,6 +31,7 @@ export interface Todo {
   userId: string;
   cardId?: string | null;
   content: string;
+  handlerNames?: string[];
   dueAt?: string;
   executeAt?: string;
   status: 'todo' | 'done' | 'completed';

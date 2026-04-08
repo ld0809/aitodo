@@ -214,6 +214,7 @@ export class TapdPlugin implements DataSourcePlugin {
     return {
       id: workspaceId ? `${workspaceId}:${req.id}` : req.id,
       content: sanitizeText(`[${statusLabel}] ${title}`),
+      handlerNames: Array.isArray(req.ownerNames) ? req.ownerNames : [],
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(req.status),
@@ -231,6 +232,7 @@ export class TapdPlugin implements DataSourcePlugin {
     return {
       id: workspaceId ? `${workspaceId}:${bug.id}` : bug.id,
       content: sanitizeText(`[${statusLabel}] ${title}`),
+      handlerNames: Array.isArray(bug.ownerNames) ? bug.ownerNames : [],
       dueAt: null,
       executeAt: null,
       status: mapTapdStatusToPluginStatus(bug.status),
@@ -267,6 +269,7 @@ export class TapdPlugin implements DataSourcePlugin {
     return items.map((item) => ({
       id: item.id,
       content: item.content,
+      handlerNames: item.handlerNames,
       dueAt: item.dueAt,
       executeAt: item.executeAt,
       status: item.status,

@@ -7,6 +7,7 @@ export interface PluginTagView {
 export interface PluginItem {
   id: string;
   content: string;
+  handlerNames?: string[];
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';
@@ -19,6 +20,7 @@ export interface PluginItem {
 export interface CardTodoView {
   id: string;
   content: string;
+  handlerNames?: string[];
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';

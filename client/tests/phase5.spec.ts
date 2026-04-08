@@ -190,3 +190,107 @@ test('tapd card should auto refresh every 5 minutes', async ({ page }) => {
   await expect.poll(() => tapdTodosRequestCount).toBe(2);
   await expect(page.getByText('刷新后的 TAPD 数据')).toBeVisible();
 });
+
+test('tapd card item should show all handler names', async ({ page }) => {
+  const now = new Date().toISOString();
+
+  await page.route(/\/users\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          id: 'phase5-user',
+          email: 'phase5-user@test.com',
+          emailVerified: true,
+          status: 'active',
+          target: '',
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    });
+  });
+
+  await page.route(/\/todos\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [],
+      }),
+    });
+  });
+
+  await page.route(/\/tags\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [],
+      }),
+    });
+  });
+
+  await page.route(/\/cards\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 'tapd-card-owner-list',
+            userId: 'phase5-user',
+            name: 'TAPD 处理人卡片',
+            cardType: 'personal',
+            sortBy: 'created_at',
+            sortOrder: 'desc',
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 3,
+            pluginType: 'tapd',
+            tags: [],
+            participants: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route(/\/cards\/tapd-card-owner-list\/todos$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 'tapd-owner-item-1',
+            content: '[开发中] 修复登录失败流程',
+            status: 'todo',
+            tags: [],
+            handlerNames: ['张三', '李四', '王五'],
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  await expect(page.getByText('[开发中] 修复登录失败流程')).toBeVisible();
+  await expect(page.getByText('[张三 李四 王五]')).toBeVisible();
+});

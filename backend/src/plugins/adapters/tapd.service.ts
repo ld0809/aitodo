@@ -9,6 +9,7 @@ export interface TapdRequirement {
   description: string;
   status: string;
   owner: string;
+  ownerNames: string[];
   created: string;
   modified: string;
   url: string;
@@ -21,10 +22,81 @@ export interface TapdBug {
   description: string;
   status: string;
   owner: string;
+  ownerNames: string[];
   created: string;
   modified: string;
   url: string;
   version: string;
+}
+
+function splitTapdOwnerText(value: string): string[] {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/[,\uFF0C;\uFF1B|\n\r]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function collectTapdOwnerNames(value: unknown): string[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectTapdOwnerNames(item));
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return splitTapdOwnerText(String(value));
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const preferredName =
+      record.name ??
+      record.user ??
+      record.realname ??
+      record.nickname ??
+      record.display_name ??
+      record.label ??
+      record.text;
+
+    if (preferredName !== undefined) {
+      return collectTapdOwnerNames(preferredName);
+    }
+  }
+
+  return [];
+}
+
+function extractTapdOwnerNames(item: Record<string, unknown>): string[] {
+  const candidates = [
+    item.owner,
+    item.owners,
+    item.owner_name,
+    item.owner_names,
+    item.current_owner,
+    item.current_owner_name,
+    item.current_owners,
+    item.current_owner_names,
+    item.handler,
+    item.handlers,
+    item.processor,
+    item.processors,
+  ];
+
+  return Array.from(
+    new Set(
+      candidates
+        .flatMap((candidate) => collectTapdOwnerNames(candidate))
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 export interface TapdProject {
@@ -533,17 +605,22 @@ export class TapdService {
             return true;
           });
 
-      return filteredData.map((item: any) => ({
-        iterationId: item.iteration_id || item.iterationId,
-        id: item.id || item.story_id,
-        name: item.name || item.title,
-        description: item.description || '',
-        status: item.status,
-        owner: item.owner?.name || item.owner_name || '',
-        created: item.created,
-        modified: item.modified,
-        url: item.url || `https://www.tapd.cn/tapd_fe/${params.workspaceId}/story/detail/${item.id}`,
-      }));
+      return filteredData.map((item: any) => {
+        const ownerNames = extractTapdOwnerNames(item as Record<string, unknown>);
+
+        return {
+          iterationId: item.iteration_id || item.iterationId,
+          id: item.id || item.story_id,
+          name: item.name || item.title,
+          description: item.description || '',
+          status: item.status,
+          owner: ownerNames.join(' ') || item.owner?.name || item.owner_name || '',
+          ownerNames,
+          created: item.created,
+          modified: item.modified,
+          url: item.url || `https://www.tapd.cn/tapd_fe/${params.workspaceId}/story/detail/${item.id}`,
+        };
+      });
     } catch (error: any) {
       const status = error?.response?.status;
       if (status === 401) {
@@ -647,13 +724,15 @@ export class TapdService {
         const bugDetailId = item.bug_id || item.id;
         const rawStatus = String(item.status || '');
         const statusLabel = bugStatusLabelMap[rawStatus] || bugStatusLabelMap[rawStatus.toLowerCase()] || rawStatus;
+        const ownerNames = extractTapdOwnerNames(item as Record<string, unknown>);
         return {
           iterationId: item.iteration_id || item.iterationId,
           id: item.id || item.bug_id,
           title: item.title,
           description: item.description || '',
           status: statusLabel,
-          owner: item.owner?.name || item.owner_name || '',
+          owner: ownerNames.join(' ') || item.owner?.name || item.owner_name || '',
+          ownerNames,
           created: item.created,
           modified: item.modified,
           url: item.url || `https://www.tapd.cn/tapd_fe/${params.workspaceId}/bug/detail/${bugDetailId}`,
@@ -692,17 +771,21 @@ export class TapdService {
       // TAPD 返回格式: [{ "Story": {...} }, ...]
       const data = rawData.map((item: any) => item.Story || item);
       
-      return data.map((item: any) => ({
+      return data.map((item: any) => {
+        const ownerNames = extractTapdOwnerNames(item as Record<string, unknown>);
+        return {
         iterationId: item.iteration_id || item.iterationId,
         id: item.id || item.story_id,
         name: item.name || item.title,
         description: item.description || '',
         status: item.status,
-        owner: item.owner?.name || item.owner_name || '',
+        owner: ownerNames.join(' ') || item.owner?.name || item.owner_name || '',
+        ownerNames,
         created: item.created,
         modified: item.modified,
         url: item.url || `https://www.tapd.cn/tapd_fe/${workspaceId}/story/detail/${item.id}`,
-      }));
+        };
+      });
     } catch (error) {
       console.error('Failed to fetch todos:', error);
       return [];

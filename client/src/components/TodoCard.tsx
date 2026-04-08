@@ -64,6 +64,10 @@ export function TodoCard({
   const visibleTags = (Array.isArray(todo.tags) ? todo.tags : []).filter(
     (tag) => !hiddenTagIdSet.has(tag.id),
   );
+  const handlerNames = Array.isArray(todo.handlerNames)
+    ? todo.handlerNames.map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  const handlerLabel = handlerNames.length > 0 ? `[${handlerNames.join(' ')}]` : null;
 
   return (
     <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
@@ -106,6 +110,7 @@ export function TodoCard({
           <div className={`todo-text ${isDone ? 'done' : ''}`}>
             {todo.content}
           </div>
+          {handlerLabel && <div className="todo-handler-list">{handlerLabel}</div>}
           <div className="todo-meta">
             {visibleTags.map((tag) => (
               <span key={tag.id} className={`tag ${getTagClass(tag.name)}`}>
