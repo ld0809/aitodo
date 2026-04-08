@@ -4,6 +4,16 @@ const {
   prepareCalendarSync,
   confirmCalendarSync
 } = require('../../utils/todo');
+const {
+  CALENDAR_AUTH_SCOPE,
+  CALENDAR_PERMISSION_DENIED_MESSAGE,
+  CALENDAR_UNSUPPORTED_MESSAGE,
+  buildPhoneCalendarPayload,
+  normalizeCalendarErrorMessage
+} = require('../../utils/calendar-sync');
+
+const TODO_ACTION_WIDTH = 96;
+const TODO_ACTION_OPEN_THRESHOLD = 36;
 
 function formatDueText(iso) {
   if (!iso) {
@@ -31,8 +41,22 @@ function normalizeTodo(todo) {
     _dueText: dueText,
     _dueTextDisplay: dueText || '无截止时间',
     _tagName: firstTag ? firstTag.name : '无标签',
-    _tagId: firstTag ? firstTag.id : ''
+    _tagId: firstTag ? firstTag.id : '',
+    _swipeOffset: 0,
+    _swipeStyle: 'transform: translateX(0px);',
+    _swipeActionClass: todo.dueAt ? '' : 'todo-calendar-action-disabled'
   };
+}
+
+function applyTodoSwipeState(todos, activeTodoId, offsetPx) {
+  return (todos || []).map((todo) => {
+    const currentOffset = todo.id === activeTodoId ? offsetPx : 0;
+    return {
+      ...todo,
+      _swipeOffset: currentOffset,
+      _swipeStyle: `transform: translateX(${currentOffset}px);`
+    };
+  });
 }
 
 function normalizeTags(tags, selectedTagId, draggingTagId) {
@@ -92,10 +116,22 @@ Page({
     drawerClass: '',
     syncSheetClass: '',
     syncResultVisible: false,
+    syncQueue: [],
+    syncCursor: 0,
+    syncActionLabel: '',
+    currentSyncTodoContent: '',
+    calendarPermissionReady: false,
+    swipeTodoId: '',
+    swipeStartX: 0,
+    swipeStartY: 0,
+    swipeBaseOffset: 0,
+    swipeCurrentOffset: 0,
+    activeSwipeTodoId: '',
     syncResult: {
       added: 0,
       skipped: 0,
-      failed: 0
+      failed: 0,
+      message: ''
     }
   },
 
@@ -105,7 +141,31 @@ Page({
 
   onShow() {
     this.ensureSession();
+    this.syncLayoutMetrics();
+    this.refreshCalendarPermissionState();
     this.refreshHomeData();
+  },
+
+  refreshCalendarPermissionState() {
+    if (typeof wx.addPhoneCalendar !== 'function') {
+      this.setData({ calendarPermissionReady: false });
+      return;
+    }
+
+    if (typeof wx.getSetting !== 'function') {
+      this.setData({ calendarPermissionReady: true });
+      return;
+    }
+
+    wx.getSetting({
+      success: (res) => {
+        const authSetting = (res && res.authSetting) || {};
+        this.setData({ calendarPermissionReady: authSetting[CALENDAR_AUTH_SCOPE] === true });
+      },
+      fail: () => {
+        this.setData({ calendarPermissionReady: false });
+      }
+    });
   },
 
   syncLayoutMetrics() {
@@ -147,7 +207,7 @@ Page({
 
       this.setData({
         tags,
-        todos,
+        todos: applyTodoSwipeState(todos, this.data.activeSwipeTodoId, this.data.swipeCurrentOffset),
         emptyVisible: todos.length === 0,
         selectedTagId: selectedTag.id,
         selectedTagName: selectedTag.name
@@ -163,6 +223,7 @@ Page({
   },
 
   toggleDrawer() {
+    this.closeSwipeActions();
     const drawerVisible = !this.data.drawerVisible;
     this.setData({
       drawerVisible,
@@ -178,6 +239,7 @@ Page({
   },
 
   async selectTag(event) {
+    this.closeSwipeActions();
     const { id, name } = event.currentTarget.dataset;
     this.setData({
       selectedTagId: id,
@@ -259,6 +321,7 @@ Page({
   },
 
   onToggleUncompleted(event) {
+    this.closeSwipeActions();
     const showUncompletedOnly = !!event.detail.value;
     this.setData({
       includeCompleted: !showUncompletedOnly,
@@ -268,12 +331,17 @@ Page({
   },
 
   openCreateTodo() {
+    this.closeSwipeActions();
     wx.navigateTo({
       url: `/pages/todo-editor/index?mode=create&tagId=${encodeURIComponent(this.data.selectedTagId)}`
     });
   },
 
   openTodoEditor(event) {
+    if (this.data.activeSwipeTodoId === event.currentTarget.dataset.todoId) {
+      this.closeSwipeActions();
+      return;
+    }
     const dataset = event.currentTarget.dataset;
     const content = encodeURIComponent(dataset.content || '');
     const dueAt = dataset.dueAt ? encodeURIComponent(dataset.dueAt) : '';
@@ -287,6 +355,144 @@ Page({
 
   noop() {},
 
+  onTodoTouchStart(event) {
+    const touch = event.touches && event.touches[0];
+    const todoId = event.currentTarget.dataset.todoId;
+    if (!touch || !todoId) {
+      return;
+    }
+
+    const baseOffset = this.data.activeSwipeTodoId === todoId ? -TODO_ACTION_WIDTH : 0;
+    this.setData({
+      swipeTodoId: todoId,
+      swipeStartX: touch.clientX,
+      swipeStartY: touch.clientY,
+      swipeBaseOffset: baseOffset,
+      swipeCurrentOffset: baseOffset
+    });
+  },
+
+  onTodoTouchMove(event) {
+    const touch = event.touches && event.touches[0];
+    const swipeTodoId = this.data.swipeTodoId;
+    if (!touch || !swipeTodoId) {
+      return;
+    }
+
+    const deltaX = touch.clientX - this.data.swipeStartX;
+    const deltaY = touch.clientY - this.data.swipeStartY;
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+      return;
+    }
+
+    const nextOffset = Math.max(-TODO_ACTION_WIDTH, Math.min(0, this.data.swipeBaseOffset + deltaX));
+    this.setData({
+      swipeCurrentOffset: nextOffset,
+      activeSwipeTodoId: swipeTodoId,
+      todos: applyTodoSwipeState(this.data.todos, swipeTodoId, nextOffset)
+    });
+  },
+
+  onTodoTouchEnd() {
+    const swipeTodoId = this.data.swipeTodoId;
+    if (!swipeTodoId) {
+      return;
+    }
+
+    const shouldOpen = this.data.swipeCurrentOffset <= -TODO_ACTION_OPEN_THRESHOLD;
+    const activeSwipeTodoId = shouldOpen ? swipeTodoId : '';
+    const finalOffset = shouldOpen ? -TODO_ACTION_WIDTH : 0;
+
+    this.setData({
+      swipeTodoId: '',
+      swipeStartX: 0,
+      swipeStartY: 0,
+      swipeBaseOffset: 0,
+      swipeCurrentOffset: finalOffset,
+      activeSwipeTodoId,
+      todos: applyTodoSwipeState(this.data.todos, activeSwipeTodoId, finalOffset)
+    });
+  },
+
+  closeSwipeActions() {
+    if (!this.data.activeSwipeTodoId && !this.data.swipeTodoId) {
+      return;
+    }
+
+    this.setData({
+      swipeTodoId: '',
+      swipeStartX: 0,
+      swipeStartY: 0,
+      swipeBaseOffset: 0,
+      swipeCurrentOffset: 0,
+      activeSwipeTodoId: '',
+      todos: applyTodoSwipeState(this.data.todos, '', 0)
+    });
+  },
+
+  async handleTodoCalendarTap(event) {
+    const todoId = event.currentTarget.dataset.todoId;
+    const todo = (this.data.todos || []).find((item) => item.id === todoId);
+    if (!todo) {
+      return;
+    }
+
+    if (!todo.dueAt) {
+      wx.showToast({ title: '请先给待办设置截止时间', icon: 'none' });
+      return;
+    }
+
+    let prepareData;
+    try {
+      prepareData = await prepareCalendarSync({
+        device: getDevicePayload(),
+        todoIds: [todo.id],
+        includeCompleted: true
+      });
+    } catch (error) {
+      wx.showToast({ title: error.message || '同步状态检查失败', icon: 'none' });
+      return;
+    }
+
+    if ((prepareData.todosToSync || []).length === 0 && Number(prepareData.alreadySyncedCount || 0) > 0) {
+      this.closeSwipeActions();
+      wx.showToast({ title: '当前待办已同步', icon: 'none' });
+      return;
+    }
+
+    if (!this.data.calendarPermissionReady) {
+      try {
+        await this.ensureCalendarPermission();
+        this.setData({ calendarPermissionReady: true });
+        wx.showToast({ title: '权限已开启，请再点一次', icon: 'none' });
+      } catch (error) {
+        wx.showToast({ title: error.message || CALENDAR_PERMISSION_DENIED_MESSAGE, icon: 'none' });
+      } finally {
+        this.refreshCalendarPermissionState();
+      }
+      return;
+    }
+
+    const result = await this.addTodoToCalendar(todo);
+    if (!result.ok) {
+      wx.showToast({ title: result.message || '添加到日历失败', icon: 'none' });
+      return;
+    }
+
+    try {
+      await confirmCalendarSync({
+        device: getDevicePayload(),
+        todoIds: [todo.id]
+      });
+    } catch (error) {
+      wx.showToast({ title: error.message || '同步记录保存失败', icon: 'none' });
+      return;
+    }
+
+    this.closeSwipeActions();
+    wx.showToast({ title: '已添加到日历', icon: 'success' });
+  },
+
   async onTodoCompleteChange(event) {
     const id = event.currentTarget.dataset.id;
     const wasCompleted = !!event.currentTarget.dataset.completed;
@@ -299,6 +505,7 @@ Page({
   },
 
   async handleSync() {
+    this.closeSwipeActions();
     if (this.data.syncing) {
       return;
     }
@@ -322,39 +529,29 @@ Page({
         this.setData({
           syncResultVisible: true,
           syncSheetClass: 'sync-sheet-open',
-          syncResult: { added: 0, skipped, failed: 0 },
+          syncQueue: [],
+          syncCursor: 0,
+          syncActionLabel: '',
+          currentSyncTodoContent: '',
+          syncResult: { added: 0, skipped, failed: 0, message: '' },
           drawerVisible: false,
           drawerClass: ''
         });
         return;
       }
 
-      const successTodoIds = [];
-      let failed = 0;
-
-      for (const todo of todosToSync) {
-        const ok = await this.addTodoToCalendar(todo);
-        if (ok) {
-          successTodoIds.push(todo.id);
-        } else {
-          failed += 1;
-        }
-      }
-
-      if (successTodoIds.length > 0) {
-        await confirmCalendarSync({
-          device: getDevicePayload(),
-          todoIds: successTodoIds
-        });
-      }
-
       this.setData({
         syncResultVisible: true,
         syncSheetClass: 'sync-sheet-open',
+        syncQueue: todosToSync,
+        syncCursor: 0,
+        syncActionLabel: this.buildSyncActionLabel(0, todosToSync.length),
+        currentSyncTodoContent: todosToSync[0] ? todosToSync[0].content : '',
         syncResult: {
-          added: successTodoIds.length,
+          added: 0,
           skipped,
-          failed
+          failed: 0,
+          message: '微信要求写入手机日历必须由用户点击触发，请点击下方按钮逐条添加。'
         },
         drawerVisible: false,
         drawerClass: ''
@@ -366,32 +563,219 @@ Page({
     }
   },
 
+  buildSyncActionLabel(cursor, total) {
+    if (total <= 0 || cursor >= total) {
+      return '';
+    }
+    return `添加第 ${cursor + 1}/${total} 条到日历`;
+  },
+
+  ensureCalendarPermission() {
+    if (typeof wx.addPhoneCalendar !== 'function') {
+      return Promise.reject({ message: CALENDAR_UNSUPPORTED_MESSAGE });
+    }
+
+    if (typeof wx.getSetting !== 'function' || typeof wx.authorize !== 'function') {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      wx.getSetting({
+        success: (res) => {
+          const authSetting = (res && res.authSetting) || {};
+          const scopeStatus = authSetting[CALENDAR_AUTH_SCOPE];
+
+          if (scopeStatus === true) {
+            resolve();
+            return;
+          }
+
+          if (scopeStatus === false) {
+            this.promptOpenCalendarSetting().then(resolve).catch(reject);
+            return;
+          }
+
+          wx.authorize({
+            scope: CALENDAR_AUTH_SCOPE,
+            success: () => resolve(),
+            fail: (error) => {
+              const message = normalizeCalendarErrorMessage(error) || CALENDAR_PERMISSION_DENIED_MESSAGE;
+              this.promptOpenCalendarSetting(message).then(resolve).catch(reject);
+            }
+          });
+        },
+        fail: () => {
+          wx.authorize({
+            scope: CALENDAR_AUTH_SCOPE,
+            success: () => resolve(),
+            fail: (error) => reject({ message: normalizeCalendarErrorMessage(error) })
+          });
+        }
+      });
+    });
+  },
+
+  promptOpenCalendarSetting(message = CALENDAR_PERMISSION_DENIED_MESSAGE) {
+    if (typeof wx.showModal !== 'function' || typeof wx.openSetting !== 'function') {
+      return Promise.reject({ message });
+    }
+
+    return new Promise((resolve, reject) => {
+      wx.showModal({
+        title: '需要日历权限',
+        content: message,
+        confirmText: '去开启',
+        cancelText: '取消',
+        success: (modalRes) => {
+          if (!modalRes.confirm) {
+            reject({ message });
+            return;
+          }
+
+          wx.openSetting({
+            success: (settingRes) => {
+              const authSetting = (settingRes && settingRes.authSetting) || {};
+              if (authSetting[CALENDAR_AUTH_SCOPE]) {
+                resolve();
+                return;
+              }
+              reject({ message: CALENDAR_PERMISSION_DENIED_MESSAGE });
+            },
+            fail: (error) => reject({ message: normalizeCalendarErrorMessage(error) })
+          });
+        },
+        fail: (error) => reject({ message: normalizeCalendarErrorMessage(error) })
+      });
+    });
+  },
+
+  async handleSyncActionTap() {
+    const queue = this.data.syncQueue || [];
+    const cursor = Number(this.data.syncCursor || 0);
+
+    if (cursor >= queue.length) {
+      this.closeSyncResult();
+      return;
+    }
+
+    if (!this.data.calendarPermissionReady) {
+      try {
+        await this.ensureCalendarPermission();
+        this.setData({
+          calendarPermissionReady: true,
+          syncResult: {
+            ...this.data.syncResult,
+            message: '日历权限已开启，请再次点击按钮继续同步。'
+          }
+        });
+      } catch (error) {
+        this.setData({
+          syncResult: {
+            ...this.data.syncResult,
+            message: error.message || CALENDAR_PERMISSION_DENIED_MESSAGE
+          }
+        });
+      } finally {
+        this.refreshCalendarPermissionState();
+      }
+      return;
+    }
+
+    const currentTodo = queue[cursor];
+    const result = await this.addTodoToCalendar(currentTodo);
+
+    let nextAdded = this.data.syncResult.added;
+    let nextFailed = this.data.syncResult.failed;
+    let nextMessage = result.message || '';
+
+    if (result.ok) {
+      try {
+        await confirmCalendarSync({
+          device: getDevicePayload(),
+          todoIds: [currentTodo.id]
+        });
+        nextAdded += 1;
+        nextMessage = '';
+      } catch (error) {
+        nextFailed += 1;
+        nextMessage = error.message || '同步记录保存失败';
+      }
+    } else {
+      nextFailed += 1;
+    }
+
+    const nextCursor = cursor + 1;
+    const nextQueueDone = nextCursor >= queue.length;
+
+    this.setData({
+      syncCursor: nextCursor,
+      syncActionLabel: nextQueueDone ? '' : this.buildSyncActionLabel(nextCursor, queue.length),
+      currentSyncTodoContent: nextQueueDone ? '' : (queue[nextCursor] ? queue[nextCursor].content : ''),
+      syncResult: {
+        ...this.data.syncResult,
+        added: nextAdded,
+        failed: nextFailed,
+        message: nextQueueDone ? nextMessage : (nextMessage || `已处理 ${nextCursor}/${queue.length} 条，请继续点击添加下一条。`)
+      }
+    });
+  },
+
   addTodoToCalendar(todo) {
     return new Promise((resolve) => {
       if (typeof wx.addPhoneCalendar !== 'function') {
-        resolve(false);
+        resolve({
+          ok: false,
+          message: CALENDAR_UNSUPPORTED_MESSAGE
+        });
         return;
       }
 
-      const dueAt = new Date(todo.dueAt);
-      const startDate = `${dueAt.getFullYear()}-${String(dueAt.getMonth() + 1).padStart(2, '0')}-${String(dueAt.getDate()).padStart(2, '0')}`;
-      const startTime = `${String(dueAt.getHours()).padStart(2, '0')}:${String(dueAt.getMinutes()).padStart(2, '0')}`;
+      let payload;
+      try {
+        payload = buildPhoneCalendarPayload(todo);
+      } catch (error) {
+        resolve({
+          ok: false,
+          message: normalizeCalendarErrorMessage(error)
+        });
+        return;
+      }
 
-      wx.addPhoneCalendar({
-        title: todo.content,
-        startTime,
-        startDate,
-        description: '来自 AI待办 小程序同步',
-        success: () => resolve(true),
-        fail: () => resolve(false)
-      });
+      try {
+        wx.addPhoneCalendar({
+          ...payload,
+          success: () =>
+            resolve({
+              ok: true
+            }),
+          fail: (error) => {
+            console.warn('[miniapp-calendar-sync] addPhoneCalendar failed', {
+              todoId: todo.id,
+              errMsg: error && error.errMsg ? error.errMsg : ''
+            });
+            resolve({
+              ok: false,
+              message: normalizeCalendarErrorMessage(error)
+            });
+          }
+        });
+      } catch (error) {
+        resolve({
+          ok: false,
+          message: normalizeCalendarErrorMessage(error)
+        });
+      }
     });
   },
 
   closeSyncResult() {
     this.setData({
       syncResultVisible: false,
-      syncSheetClass: ''
+      syncSheetClass: '',
+      syncQueue: [],
+      syncCursor: 0,
+      syncActionLabel: '',
+      currentSyncTodoContent: ''
     });
   }
 });

@@ -25,11 +25,26 @@ Component({
   data: {
     statusBarHeight: 20,
     navBarHeight: 44,
-    sideWidth: 96
+    sideWidth: 96,
+    totalHeight: 64
   },
 
   lifetimes: {
     attached() {
+      this.syncMetrics();
+    },
+
+    ready() {
+      this.syncMetrics();
+    }
+  },
+
+  pageLifetimes: {
+    show() {
+      this.syncMetrics();
+    },
+
+    resize() {
       this.syncMetrics();
     }
   },
@@ -56,7 +71,8 @@ Component({
       this.setData({
         statusBarHeight,
         navBarHeight,
-        sideWidth
+        sideWidth,
+        totalHeight: statusBarHeight + navBarHeight
       });
     },
 

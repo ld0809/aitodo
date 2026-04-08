@@ -1,8 +1,12 @@
 .page {
   position: relative;
+  height: 100vh;
   min-height: 100vh;
-  padding: 0 24rpx 140rpx;
+  padding: 0 24rpx;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .nav-icon-btn {
@@ -22,6 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
+  flex: none;
 }
 
 .tag-indicator {
@@ -45,7 +50,14 @@
 }
 
 .todo-list {
-  height: calc(100vh - 220rpx);
+  flex: 1;
+  min-height: 0;
+}
+
+.todo-list-content {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
 }
 
 .loading,
@@ -55,9 +67,46 @@
   color: #607089;
 }
 
-.todo-item {
-  padding: 20rpx;
+.todo-swipe-row {
+  position: relative;
   margin-bottom: 16rpx;
+  overflow: hidden;
+  border-radius: 20rpx;
+}
+
+.todo-swipe-action-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 192rpx;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.todo-calendar-action {
+  width: 192rpx;
+  background: #2f7af8;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.todo-calendar-action-disabled {
+  background: #cbd5e1;
+  color: #475569;
+}
+
+.todo-item {
+  position: relative;
+  z-index: 2;
+  padding: 20rpx;
+  margin-bottom: 0;
+  transition: transform 0.18s ease;
 }
 
 .todo-main {
@@ -89,7 +138,7 @@
 .fab {
   position: fixed;
   right: 28rpx;
-  bottom: 52rpx;
+  bottom: calc(52rpx + env(safe-area-inset-bottom));
   width: 96rpx;
   height: 96rpx;
   flex: none;
@@ -115,7 +164,7 @@
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.28);
-  z-index: 20;
+  z-index: 80;
 }
 
 .drawer {
@@ -125,7 +174,7 @@
   width: 520rpx;
   height: 100vh;
   background: #ffffff;
-  z-index: 21;
+  z-index: 81;
   transition: left 0.22s ease;
   box-sizing: border-box;
 }
@@ -204,7 +253,7 @@
   width: 100vw;
   background: #ffffff;
   border-radius: 24rpx 24rpx 0 0;
-  z-index: 30;
+  z-index: 90;
   padding: 28rpx;
   box-sizing: border-box;
   transition: bottom 0.24s ease;
@@ -221,5 +270,22 @@
 
 .sheet-item {
   margin-bottom: 8rpx;
-  color: #607089;
+  color: #334155;
+}
+
+.sheet-message {
+  margin: 18rpx 0 24rpx;
+  color: #8a5a00;
+  font-size: 24rpx;
+  line-height: 1.5;
+  background: #fff7e6;
+  border-radius: 16rpx;
+  padding: 16rpx 18rpx;
+}
+
+.sheet-pending-title {
+  margin-top: 12rpx;
+  color: #1e293b;
+  font-weight: 600;
+  line-height: 1.5;
 }

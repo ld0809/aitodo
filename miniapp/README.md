@@ -53,7 +53,8 @@
 ## 注意事项
 - 小程序与后端联调默认走 `app.globalData.apiBaseUrl`。
 - 绑定逻辑已使用后端 `POST /miniapp/wechat/bind-by-code`，由后端完成 `wx.login code -> openid` 兑换。
-- 日历写入使用 `wx.addPhoneCalendar`，若基础库或设备不支持，会计入“失败”数量。
+- 日历写入使用 `wx.addPhoneCalendar`，需先授权 `scope.addPhoneCalendar`，并传 Unix 时间戳形式的 `startTime/endTime`。
+- 若基础库、设备或系统权限不支持写入手机日历，会在同步结果中显示失败原因。
 
 后端环境变量（见 `backend/.env.example`）：
 - `WECHAT_MINIAPP_APP_ID`

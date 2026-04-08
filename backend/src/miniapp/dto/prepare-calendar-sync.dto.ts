@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsOptional, IsUUID, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsUUID, ValidateNested } from 'class-validator';
 import { CalendarSyncDeviceDto } from './calendar-sync-device.dto';
 
 export class PrepareCalendarSyncDto {
@@ -15,4 +15,9 @@ export class PrepareCalendarSyncDto {
   @Type(() => Boolean)
   @IsBoolean()
   includeCompleted?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  todoIds?: string[];
 }

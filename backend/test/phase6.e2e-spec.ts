@@ -196,6 +196,24 @@ describe('Phase 6 - Miniapp Binding and Calendar Sync (e2e)', () => {
     expect(prepare2Data.alreadySyncedCount).toBe(2);
     expect(prepare2Data.todosToSync).toHaveLength(0);
 
+    const prepareSingleRes = await request(getHttpApp())
+      .post(`${baseUrl}/miniapp/calendar-sync/prepare`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        device,
+        todoIds: [dueEarlyTodoId],
+      });
+    expect(prepareSingleRes.status).toBe(201);
+
+    const prepareSingleData = getData<{
+      totalDueTodos: number;
+      alreadySyncedCount: number;
+      todosToSync: Array<{ id: string }>;
+    }>(prepareSingleRes.body);
+    expect(prepareSingleData.totalDueTodos).toBe(1);
+    expect(prepareSingleData.alreadySyncedCount).toBe(1);
+    expect(prepareSingleData.todosToSync).toHaveLength(0);
+
     const updateDueRes = await request(getHttpApp())
       .patch(`${baseUrl}/todos/${dueEarlyTodoId}`)
       .set('Authorization', `Bearer ${accessToken}`)

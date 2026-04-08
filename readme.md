@@ -210,3 +210,6 @@ SMTP_VERIFY_SUBJECT=【AI待办】邮箱验证码
 - 邮箱：test1@fxiaoke.com 密码：My123456
 - 邮箱：test2@fxiaoke.com 密码：My123456
 - 邮箱：test4@fxiaoke.com 密码：My123456
+### 生成环境测试账号
+- 邮箱：test1@fxiaoke.com 密码：My123456
+- 邮箱：test2@fxiaoke.com 密码：My123456

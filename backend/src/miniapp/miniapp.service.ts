@@ -166,8 +166,11 @@ export class MiniappService {
       includeCompleted: dto.includeCompleted ?? false,
       dueOnly: true,
     });
+    const uniqueTodoIds = dto.todoIds ? Array.from(new Set(dto.todoIds)) : [];
+    const scopedDueTodos =
+      uniqueTodoIds.length > 0 ? dueTodos.filter((todo) => uniqueTodoIds.includes(todo.id)) : dueTodos;
 
-    if (dueTodos.length === 0) {
+    if (scopedDueTodos.length === 0) {
       return {
         deviceId,
         totalDueTodos: 0,
@@ -184,7 +187,7 @@ export class MiniappService {
     });
 
     const recordMap = new Map(existingRecords.map((record) => [record.todoId, record]));
-    const todosToSync = dueTodos.filter((todo) => {
+    const todosToSync = scopedDueTodos.filter((todo) => {
       if (!todo.dueAt) {
         return false;
       }
@@ -197,8 +200,8 @@ export class MiniappService {
 
     return {
       deviceId,
-      totalDueTodos: dueTodos.length,
-      alreadySyncedCount: dueTodos.length - todosToSync.length,
+      totalDueTodos: scopedDueTodos.length,
+      alreadySyncedCount: scopedDueTodos.length - todosToSync.length,
       todosToSync,
     };
   }

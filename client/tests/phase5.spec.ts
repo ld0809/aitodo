@@ -33,3 +33,24 @@ test('phase5 landing page should show feature highlights and auth entries', asyn
 
   expect(consoleErrors).toEqual([]);
 });
+
+test('login failure should stay on page and show server error', async ({ page }) => {
+  await page.route('**/api/v1/auth/login', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        message: '邮箱或密码错误',
+      }),
+    });
+  });
+
+  await page.goto(`${BASE_URL}/login`);
+  await page.locator('input[type="email"]').fill('wrong@example.com');
+  await page.locator('input[type="password"]').fill('wrong-password');
+  await page.getByRole('button', { name: '登录' }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator('.error-message')).toContainText('邮箱或密码错误');
+  await expect(page.locator('input[type="email"]')).toHaveValue('wrong@example.com');
+});

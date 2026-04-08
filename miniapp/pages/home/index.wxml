@@ -11,35 +11,56 @@
     </view>
   </view>
 
-  <scroll-view scroll-y class="todo-list" refresher-enabled bindrefresherrefresh="onPullDownRefresh" refresher-triggered="{{refreshing}}">
-    <view wx:if="{{loading}}" class="loading">加载中...</view>
+  <scroll-view scroll-y class="todo-list" refresher-enabled bindrefresherrefresh="onPullDownRefresh" refresher-triggered="{{refreshing}}" bindscroll="closeSwipeActions">
+    <view class="todo-list-content">
+      <view wx:if="{{loading}}" class="loading">加载中...</view>
 
-    <view wx:if="{{emptyVisible}}" class="empty panel">暂无待办</view>
+      <view wx:if="{{emptyVisible}}" class="empty panel">暂无待办</view>
 
-    <view
-      wx:for="{{todos}}"
-      wx:key="id"
-      class="todo-item panel"
-      bindtap="openTodoEditor"
-      data-todo-id="{{item.id}}"
-      data-content="{{item.content}}"
-      data-due-at="{{item.dueAt}}"
-      data-tag-id="{{item._tagId}}"
-    >
-      <view class="todo-main">
-        <checkbox
-          class="todo-checkbox"
-          checked="{{item._completed}}"
-          bindtap="noop"
-          bindchange="onTodoCompleteChange"
-          data-id="{{item.id}}"
-          data-completed="{{item._completed}}"
-        />
-        <view class="todo-content {{item._doneClass}}">{{item.content}}</view>
-      </view>
-      <view class="todo-meta">
-        <text>{{item._tagName}}</text>
-        <text>{{item._dueTextDisplay}}</text>
+      <view
+        wx:for="{{todos}}"
+        wx:key="id"
+        class="todo-swipe-row"
+      >
+        <view class="todo-swipe-action-bar">
+          <view
+            class="todo-calendar-action {{item._swipeActionClass}}"
+            catchtap="handleTodoCalendarTap"
+            data-todo-id="{{item.id}}"
+          >
+            加日历
+          </view>
+        </view>
+
+        <view
+          class="todo-item panel"
+          style="{{item._swipeStyle}}"
+          bindtap="openTodoEditor"
+          bindtouchstart="onTodoTouchStart"
+          bindtouchmove="onTodoTouchMove"
+          bindtouchend="onTodoTouchEnd"
+          bindtouchcancel="onTodoTouchEnd"
+          data-todo-id="{{item.id}}"
+          data-content="{{item.content}}"
+          data-due-at="{{item.dueAt}}"
+          data-tag-id="{{item._tagId}}"
+        >
+          <view class="todo-main">
+            <checkbox
+              class="todo-checkbox"
+              checked="{{item._completed}}"
+              bindtap="noop"
+              bindchange="onTodoCompleteChange"
+              data-id="{{item.id}}"
+              data-completed="{{item._completed}}"
+            />
+            <view class="todo-content {{item._doneClass}}">{{item.content}}</view>
+          </view>
+          <view class="todo-meta">
+            <text>{{item._tagName}}</text>
+            <text>{{item._dueTextDisplay}}</text>
+          </view>
+        </view>
       </view>
     </view>
   </scroll-view>
@@ -85,6 +106,10 @@
     <view class="sheet-item">新增：{{syncResult.added}}</view>
     <view class="sheet-item">跳过：{{syncResult.skipped}}</view>
     <view class="sheet-item">失败：{{syncResult.failed}}</view>
+    <view wx:if="{{syncCursor < syncQueue.length}}" class="sheet-item">待处理：{{syncQueue.length - syncCursor}}</view>
+    <view wx:if="{{syncCursor < syncQueue.length}}" class="sheet-item sheet-pending-title">当前待添加：{{currentSyncTodoContent}}</view>
+    <view wx:if="{{syncResult.message}}" class="sheet-message">{{syncResult.message}}</view>
+    <button wx:if="{{syncCursor < syncQueue.length}}" class="btn-primary" bindtap="handleSyncActionTap">{{syncActionLabel || '继续同步'}}</button>
     <button class="btn-secondary" bindtap="closeSyncResult">我知道了</button>
   </view>
 </view>

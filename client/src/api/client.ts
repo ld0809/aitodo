@@ -32,7 +32,11 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url as string | undefined;
+    const isAuthLoginRequest = typeof requestUrl === 'string' && requestUrl.includes('/auth/login');
+    const hasAccessToken = Boolean(localStorage.getItem('accessToken'));
+
+    if (error.response?.status === 401 && hasAccessToken && !isAuthLoginRequest) {
       queryClient.clear();
       localStorage.removeItem('accessToken');
       localStorage.removeItem('auth-storage');
