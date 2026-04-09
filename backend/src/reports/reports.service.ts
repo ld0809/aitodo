@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import axios from 'axios';
 import { Repository } from 'typeorm';
 import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
 import { GenerateAiReportDto } from './dto/generate-ai-report.dto';
+
+type AiReportProvider = 'iflow' | 'openai';
+type OpenAiApiMode = 'responses' | 'chat_completions';
 
 interface ReportRange {
   startAt: Date;
@@ -59,6 +63,7 @@ export class ReportsService {
 
   async generateAiReport(userId: string, dto: GenerateAiReportDto) {
     const range = this.resolveRange(dto);
+    const provider = this.resolveAiReportProvider();
     const allProgressEntries = await this.todoProgressRepository.find({
       where: {
         userId,
@@ -84,7 +89,7 @@ export class ReportsService {
 
     if (todoProgressItems.length === 0) {
       return {
-        provider: 'iflow',
+        provider,
         period: {
           startAt: range.startAt.toISOString(),
           endAt: range.endAt.toISOString(),
@@ -98,13 +103,16 @@ export class ReportsService {
 
     try {
       const prompt = this.buildPrompt(range, todoProgressItems, user?.target ?? null);
-      const report = await this.generateByIFlow(prompt);
+      const report =
+        provider === 'openai'
+          ? await this.generateByOpenAi(prompt)
+          : await this.generateByIFlow(prompt);
       if (!report.trim()) {
-        throw new InternalServerErrorException('iFlow returned empty report');
+        throw new InternalServerErrorException(`${provider} returned empty report`);
       }
 
       return {
-        provider: 'iflow',
+        provider,
         period: {
           startAt: range.startAt.toISOString(),
           endAt: range.endAt.toISOString(),
@@ -115,10 +123,21 @@ export class ReportsService {
         report,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown iflow error';
-      this.logger.error(`AI report generation failed by iFlow: ${message}`);
-      throw new InternalServerErrorException(`iFlow report generation failed: ${message}`);
+      const message = error instanceof Error ? error.message : `unknown ${provider} error`;
+      this.logger.error(`AI report generation failed by ${provider}: ${message}`);
+      throw new InternalServerErrorException(`${provider} report generation failed: ${message}`);
     }
+  }
+
+  private resolveAiReportProvider(): AiReportProvider {
+    const rawProvider = process.env.AI_REPORT_PROVIDER?.trim().toLowerCase();
+    if (!rawProvider || rawProvider === 'iflow') {
+      return 'iflow';
+    }
+    if (rawProvider === 'openai') {
+      return 'openai';
+    }
+    throw new InternalServerErrorException(`unsupported AI report provider: ${rawProvider}`);
   }
 
   private resolveRange(dto: GenerateAiReportDto): ReportRange {
@@ -267,6 +286,137 @@ export class ReportsService {
     }
 
     return fullResponse.trim();
+  }
+
+  private async generateByOpenAi(prompt: string): Promise<string> {
+    const apiKey = process.env.AI_REPORT_OPENAI_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error('AI_REPORT_OPENAI_API_KEY is required when AI_REPORT_PROVIDER=openai.');
+    }
+
+    const model = process.env.AI_REPORT_OPENAI_MODEL?.trim() || 'gpt-5-mini';
+    const apiMode = this.resolveOpenAiApiMode();
+    const baseUrl = (process.env.AI_REPORT_OPENAI_BASE_URL || 'https://api.openai.com/v1')
+      .trim()
+      .replace(/\/+$/, '');
+    const timeout = Number(process.env.AI_REPORT_OPENAI_TIMEOUT_MS ?? 300000);
+
+    if (apiMode === 'chat_completions') {
+      const response = await axios.post(
+        `${baseUrl}/chat/completions`,
+        {
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout,
+        },
+      );
+
+      return this.extractOpenAiChatCompletionsText(response.data);
+    }
+
+    const response = await axios.post(
+      `${baseUrl}/responses`,
+      {
+        model,
+        input: prompt,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout,
+      },
+    );
+
+    return this.extractOpenAiReportText(response.data);
+  }
+
+  private extractOpenAiReportText(payload: unknown): string {
+    if (!payload || typeof payload !== 'object') {
+      return '';
+    }
+
+    const typedPayload = payload as {
+      output_text?: unknown;
+      output?: Array<{
+        content?: Array<{
+          text?: string | { value?: string };
+        }>;
+      }>;
+    };
+
+    if (typeof typedPayload.output_text === 'string' && typedPayload.output_text.trim()) {
+      return typedPayload.output_text.trim();
+    }
+
+    const textParts = (typedPayload.output ?? []).flatMap((item) =>
+      (item.content ?? []).flatMap((contentItem) => {
+        if (typeof contentItem.text === 'string') {
+          return [contentItem.text];
+        }
+        if (
+          contentItem.text &&
+          typeof contentItem.text === 'object' &&
+          typeof contentItem.text.value === 'string'
+        ) {
+          return [contentItem.text.value];
+        }
+        return [];
+      }),
+    );
+
+    return textParts.join('\n').trim();
+  }
+
+  private resolveOpenAiApiMode(): OpenAiApiMode {
+    const rawMode = process.env.AI_REPORT_OPENAI_API_MODE?.trim().toLowerCase();
+    if (!rawMode || rawMode === 'responses') {
+      return 'responses';
+    }
+    if (rawMode === 'chat_completions' || rawMode === 'chat-completions') {
+      return 'chat_completions';
+    }
+    throw new Error(`unsupported AI_REPORT_OPENAI_API_MODE: ${rawMode}`);
+  }
+
+  private extractOpenAiChatCompletionsText(payload: unknown): string {
+    if (!payload || typeof payload !== 'object') {
+      return '';
+    }
+
+    const typedPayload = payload as {
+      choices?: Array<{
+        message?: {
+          content?: string | Array<{ type?: string; text?: string }>;
+        };
+      }>;
+    };
+
+    const firstContent = typedPayload.choices?.[0]?.message?.content;
+    if (typeof firstContent === 'string') {
+      return firstContent.trim();
+    }
+
+    if (Array.isArray(firstContent)) {
+      return firstContent
+        .map((item) => (item?.type === 'text' || item?.text ? item?.text || '' : ''))
+        .join('\n')
+        .trim();
+    }
+
+    return '';
   }
 
   private formatDateTime(date: Date): string {

@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import axios from 'axios';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
@@ -55,6 +56,8 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
   beforeAll(async () => {
     process.env.DATABASE_PATH = ':memory:';
     process.env.NODE_ENV = 'development';
+    process.env.AUTH_EXPOSE_VERIFY_CODE = 'true';
+    process.env.AI_REPORT_PROVIDER = 'iflow';
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -161,5 +164,126 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
     expect(reportPayload.todoCount).toBe(1);
     expect(reportPayload.progressCount).toBe(1);
     expect(reportPayload.report).toContain('iFlow mock report');
+  });
+
+  it('generate ai report by openai when provider is configured', async () => {
+    const startAt = '2000-01-01T00:00:00.000Z';
+    const endAt = '2100-01-01T00:00:00.000Z';
+    const openAiPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        output_text: 'OpenAI mock report for phase3',
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {},
+    } as never);
+
+    process.env.AI_REPORT_PROVIDER = 'openai';
+    process.env.AI_REPORT_OPENAI_API_KEY = 'test-openai-key';
+    process.env.AI_REPORT_OPENAI_MODEL = 'gpt-5-mini';
+    process.env.AI_REPORT_OPENAI_BASE_URL = 'https://api.openai.test/v1';
+
+    try {
+      const reportRes = await request(getHttpApp())
+        .post(`${baseUrl}/reports/ai`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          startAt,
+          endAt,
+        });
+
+      expect(reportRes.status).toBe(201);
+      const reportPayload = getPayload<{ provider: string; todoCount: number; progressCount: number; report: string }>(reportRes.body);
+      expect(reportPayload.provider).toBe('openai');
+      expect(reportPayload.todoCount).toBe(1);
+      expect(reportPayload.progressCount).toBe(1);
+      expect(reportPayload.report).toContain('OpenAI mock report');
+      expect(openAiPostSpy).toHaveBeenCalledWith(
+        'https://api.openai.test/v1/responses',
+        expect.objectContaining({
+          model: 'gpt-5-mini',
+          input: expect.any(String),
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-openai-key',
+          }),
+        }),
+      );
+    } finally {
+      openAiPostSpy.mockRestore();
+      process.env.AI_REPORT_PROVIDER = 'iflow';
+      delete process.env.AI_REPORT_OPENAI_API_KEY;
+      delete process.env.AI_REPORT_OPENAI_MODEL;
+      delete process.env.AI_REPORT_OPENAI_BASE_URL;
+    }
+  });
+
+  it('generate ai report by openai chat completions mode when configured', async () => {
+    const startAt = '2000-01-01T00:00:00.000Z';
+    const endAt = '2100-01-01T00:00:00.000Z';
+    const openAiPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        choices: [
+          {
+            message: {
+              content: 'OpenAI chat completion mock report for phase3',
+            },
+          },
+        ],
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {},
+    } as never);
+
+    process.env.AI_REPORT_PROVIDER = 'openai';
+    process.env.AI_REPORT_OPENAI_API_MODE = 'chat_completions';
+    process.env.AI_REPORT_OPENAI_API_KEY = 'test-openai-key';
+    process.env.AI_REPORT_OPENAI_MODEL = 'MiniMax-M2.7';
+    process.env.AI_REPORT_OPENAI_BASE_URL = 'https://api.openai.test/v1';
+
+    try {
+      const reportRes = await request(getHttpApp())
+        .post(`${baseUrl}/reports/ai`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          startAt,
+          endAt,
+        });
+
+      expect(reportRes.status).toBe(201);
+      const reportPayload = getPayload<{ provider: string; todoCount: number; progressCount: number; report: string }>(reportRes.body);
+      expect(reportPayload.provider).toBe('openai');
+      expect(reportPayload.todoCount).toBe(1);
+      expect(reportPayload.progressCount).toBe(1);
+      expect(reportPayload.report).toContain('OpenAI chat completion mock report');
+      expect(openAiPostSpy).toHaveBeenCalledWith(
+        'https://api.openai.test/v1/chat/completions',
+        expect.objectContaining({
+          model: 'MiniMax-M2.7',
+          messages: [
+            expect.objectContaining({
+              role: 'user',
+              content: expect.any(String),
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-openai-key',
+          }),
+        }),
+      );
+    } finally {
+      openAiPostSpy.mockRestore();
+      process.env.AI_REPORT_PROVIDER = 'iflow';
+      delete process.env.AI_REPORT_OPENAI_API_MODE;
+      delete process.env.AI_REPORT_OPENAI_API_KEY;
+      delete process.env.AI_REPORT_OPENAI_MODEL;
+      delete process.env.AI_REPORT_OPENAI_BASE_URL;
+    }
   });
 });
