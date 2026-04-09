@@ -294,3 +294,152 @@ test('tapd card item should show all handler names', async ({ page }) => {
   await expect(page.getByText('[开发中] 修复登录失败流程')).toBeVisible();
   await expect(page.getByText('[张三 李四 王五]')).toBeVisible();
 });
+
+test('shared card with tags should still submit cardId when creating todo', async ({ page }) => {
+  const now = new Date().toISOString();
+  let capturedTodoPayload: { cardId?: string; tagIds?: string[]; content?: string } | null = null;
+
+  await page.route(/\/users\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {
+          id: 'phase5-owner',
+          email: 'phase5-owner@test.com',
+          emailVerified: true,
+          status: 'active',
+          target: '',
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    });
+  });
+
+  await page.route(/\/todos\/?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() === 'POST') {
+      capturedTodoPayload = route.request().postDataJSON() as {
+        cardId?: string;
+        tagIds?: string[];
+        content?: string;
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: {
+            id: 'shared-tagged-todo-1',
+            userId: 'phase5-owner',
+            cardId: capturedTodoPayload?.cardId ?? null,
+            content: capturedTodoPayload?.content ?? '共享待办',
+            status: 'todo',
+            tags: [
+              {
+                id: 'tag-shared-1',
+                userId: 'phase5-owner',
+                name: '协作',
+                color: '#1d4ed8',
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [] }),
+    });
+  });
+
+  await page.route(/\/cards\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 'shared-tagged-card',
+            userId: 'phase5-owner',
+            name: '带标签共享卡片',
+            cardType: 'shared',
+            sortBy: 'created_at',
+            sortOrder: 'desc',
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 3,
+            pluginType: 'local_todo',
+            participants: [],
+            tags: [
+              {
+                id: 'tag-shared-1',
+                userId: 'phase5-owner',
+                name: '协作',
+                color: '#1d4ed8',
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route(/\/cards\/shared-tagged-card\/todos$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'ok', data: [] }),
+    });
+  });
+
+  await page.route(/\/tags\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: [
+          {
+            id: 'tag-shared-1',
+            userId: 'phase5-owner',
+            name: '协作',
+            color: '#1d4ed8',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.addInitScript(injectAuthStorage());
+  await page.goto(`${BASE_URL}/dashboard`);
+
+  const sharedCard = page.locator('.grid-card-inner', { hasText: '带标签共享卡片' }).first();
+  await sharedCard.locator('button[title="添加待办"]').click();
+  await page.locator('textarea[placeholder="输入待办内容..."]').fill('共享卡片待办');
+  await page.getByRole('button', { name: '创建' }).last().click();
+
+  await expect.poll(() => capturedTodoPayload).not.toBeNull();
+  expect(capturedTodoPayload?.cardId).toBe('shared-tagged-card');
+  expect(capturedTodoPayload?.tagIds).toContain('tag-shared-1');
+});

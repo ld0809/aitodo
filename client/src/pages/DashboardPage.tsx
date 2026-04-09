@@ -455,10 +455,12 @@ export function DashboardPage() {
       }
       const createData = data as CreateTodoDto;
       const normalizedTagIds = (Array.isArray(createData.tagIds) ? createData.tagIds : []).filter(Boolean);
+      const shouldAttachCardId =
+        !!activeTodoCard && (activeTodoCard.cardType === 'shared' || normalizedTagIds.length === 0);
       const createPayload: CreateTodoDto = {
         ...createData,
         tagIds: normalizedTagIds.length > 0 ? normalizedTagIds : undefined,
-        cardId: activeTodoCard && normalizedTagIds.length === 0 ? activeTodoCard.id : undefined,
+        cardId: shouldAttachCardId ? activeTodoCard?.id : undefined,
       };
       creatingTodoRef.current = true;
       createTodoMutation.mutate(createPayload, {
@@ -622,12 +624,13 @@ export function DashboardPage() {
 
     const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
     const normalizedTagIds = cardTagIds.filter(Boolean);
+    const shouldAttachCardId = card.cardType === 'shared' || normalizedTagIds.length === 0;
     setQuickCreatingCardId(card.id);
     createTodoMutation.mutate(
       {
         content,
         tagIds: normalizedTagIds.length > 0 ? normalizedTagIds : undefined,
-        cardId: normalizedTagIds.length === 0 ? card.id : undefined,
+        cardId: shouldAttachCardId ? card.id : undefined,
       },
       {
         onSuccess: () => {
