@@ -2,6 +2,8 @@ import { CardUserLayout } from './entities/card-user-layout.entity';
 import { Card } from './entities/card.entity';
 import { EmailCode } from './entities/email-code.entity';
 import { MiniappBinding } from './entities/miniapp-binding.entity';
+import { OpenClawBinding } from './entities/openclaw-binding.entity';
+import { OpenClawDispatch } from './entities/openclaw-dispatch.entity';
 import { Tag } from './entities/tag.entity';
 import { TapdConfig } from './entities/tapd-config.entity';
 import { TodoCalendarSyncRecord } from './entities/todo-calendar-sync.entity';
@@ -20,4 +22,6 @@ export const APP_ENTITIES = [
   CardUserLayout,
   MiniappBinding,
   TodoCalendarSyncRecord,
+  OpenClawBinding,
+  OpenClawDispatch,
 ];

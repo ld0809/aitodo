@@ -10,6 +10,33 @@ export interface User {
   updatedAt: string;
 }
 
+export interface OpenClawBinding {
+  bound: boolean;
+  connected: boolean;
+  enabled: boolean;
+  connectToken: string | null;
+  deviceLabel: string | null;
+  connectionStatus: 'pending' | 'connected' | 'disconnected' | 'revoked' | null;
+  timeoutSeconds: number | null;
+  lastSeenAt: string | null;
+  lastDispatchedAt: string | null;
+  lastCompletedAt: string | null;
+  lastError: string | null;
+  channelCode: string;
+  wsUrl: string | null;
+  docsUrl: string;
+  pluginPackageName: string;
+  pluginInstallCommand: string | null;
+  pluginEnableCommand: string | null;
+  pluginConfigSnippet: string | null;
+  pairingHint: string;
+  routingHint: string;
+  sessionStrategy: 'per_todo';
+  suggestedDeviceLabel: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface CardParticipant {
   id: string;
   email: string;

@@ -292,6 +292,206 @@
   color: var(--txt3);
 }
 
+.openclaw-guide {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.openclaw-guide-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.openclaw-guide-intro {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--txt2);
+  line-height: 1.6;
+}
+
+.openclaw-status-badge {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--txt2);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+
+.openclaw-status-badge.ready {
+  color: #0f6b52;
+  background: #e7f6ef;
+  border-color: #b8e2cf;
+}
+
+.openclaw-step-list {
+  display: grid;
+  gap: 12px;
+}
+
+.openclaw-step-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg);
+  padding: 14px;
+}
+
+.openclaw-step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.openclaw-step-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--txt2);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+
+.openclaw-step-index.done {
+  color: #0f6b52;
+  background: #e7f6ef;
+  border-color: #b8e2cf;
+}
+
+.openclaw-step-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--txt);
+}
+
+.openclaw-step-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--txt2);
+}
+
+.openclaw-step-body {
+  display: grid;
+  gap: 10px;
+}
+
+.openclaw-inline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12px;
+  color: var(--txt3);
+}
+
+.openclaw-command-block {
+  padding: 12px;
+  border-radius: var(--r);
+  background: var(--bg2);
+  border: 1px dashed var(--border);
+  overflow-x: auto;
+}
+
+.openclaw-command-block code {
+  font-size: 12px;
+  color: var(--txt);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.openclaw-step-hint {
+  font-size: 12px;
+  color: var(--txt3);
+  line-height: 1.6;
+}
+
+.openclaw-compact-input {
+  min-height: 44px;
+  resize: none;
+}
+
+.openclaw-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--txt);
+}
+
+.openclaw-toggle-label {
+  font-weight: 500;
+}
+
+.openclaw-toggle-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.openclaw-toggle-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: #cfd6df;
+  transition: background 0.2s ease;
+}
+
+.openclaw-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.openclaw-toggle-input:checked + .openclaw-toggle-switch {
+  background: #1f9d6a;
+}
+
+.openclaw-toggle-input:checked + .openclaw-toggle-switch .openclaw-toggle-knob {
+  transform: translateX(20px);
+}
+
+.openclaw-toggle-input:focus-visible + .openclaw-toggle-switch {
+  outline: 2px solid rgba(31, 157, 106, 0.28);
+  outline-offset: 2px;
+}
+
+.openclaw-runtime-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg2);
+  font-size: 12px;
+  color: var(--txt2);
+}
+
 .progress-todo-title {
   margin-bottom: 10px;
   font-size: 14px;

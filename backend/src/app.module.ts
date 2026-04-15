@@ -14,6 +14,7 @@ import { APP_ENTITIES } from './database/entity-list';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
 import { MiniappModule } from './miniapp/miniapp.module';
+import { OpenClawModule } from './openclaw/openclaw.module';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -57,6 +58,7 @@ function resolveTypeormSynchronize() {
     ReportsModule,
     HealthModule,
     MiniappModule,
+    OpenClawModule,
   ],
 })
 export class AppModule {}

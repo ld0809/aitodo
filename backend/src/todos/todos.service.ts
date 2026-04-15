@@ -7,6 +7,7 @@ import { TodoCalendarSyncRecord } from '../database/entities/todo-calendar-sync.
 import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
+import { OpenClawService } from '../openclaw/openclaw.service';
 import { CreateTodoProgressDto } from './dto/create-todo-progress.dto';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { QueryTodosDto } from './dto/query-todos.dto';
@@ -25,6 +26,7 @@ export class TodosService {
     private readonly cardRepository: Repository<Card>,
     @InjectRepository(TodoCalendarSyncRecord)
     private readonly todoCalendarSyncRecordRepository: Repository<TodoCalendarSyncRecord>,
+    private readonly openClawService: OpenClawService,
   ) {}
 
   async create(userId: string, dto: CreateTodoDto) {
@@ -66,7 +68,9 @@ export class TodosService {
     });
 
     const savedTodo = await this.todoRepository.save(todo);
-    return this.findOne(userId, savedTodo.id);
+    const createdTodo = await this.findOne(userId, savedTodo.id);
+    await this.dispatchOpenClawIfNeeded(createdTodo, createdTodo.assignees ?? assignees, userId);
+    return createdTodo;
   }
 
   async findAll(userId: string, query: QueryTodosDto) {
@@ -188,7 +192,9 @@ export class TodosService {
     if (dueAtChanged) {
       await this.todoCalendarSyncRecordRepository.delete({ todoId: todo.id });
     }
-    return this.findOne(userId, id);
+    await this.dispatchOpenClawIfNeeded(todo, todo.assignees ?? [], userId);
+    const updatedTodo = await this.findOne(userId, id);
+    return updatedTodo;
   }
 
   async complete(userId: string, id: string, completed: boolean) {
@@ -345,5 +351,22 @@ export class TodosService {
       return trimmedNickname;
     }
     return user.email.split('@')[0] ?? user.email;
+  }
+
+  private async dispatchOpenClawIfNeeded(
+    todo: Pick<Todo, 'id' | 'cardId' | 'content' | 'userId'>,
+    assignees: User[],
+    userId: string,
+  ) {
+    await this.openClawService.dispatchAssignedSharedTodo(
+      {
+        todoId: todo.id,
+        cardId: todo.cardId ?? null,
+        content: todo.content,
+        ownerUserId: todo.userId,
+      },
+      assignees,
+      userId,
+    );
   }
 }

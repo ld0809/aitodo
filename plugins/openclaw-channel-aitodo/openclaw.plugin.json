@@ -1,0 +1,15 @@
+{
+  "id": "aitodo",
+  "kind": "channel",
+  "channels": [
+    "aitodo"
+  ],
+  "name": "AITodo",
+  "description": "AITodo channel plugin for OpenClaw",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -204,6 +204,163 @@ SMTP_VERIFY_SUBJECT=【AI待办】邮箱验证码
 - 用户设备的标识使用wx.getSystemInfoSync()返回的 brand、model、screenWidth、screenHeight拼接，作为唯一标识
 - 当待办中的截止时间发生变化时，清除该待办的同步记录，下次同步时会重新加入到日历中
 
+## 第七阶段
+### 目标
+完成AI助理的接入，允许接入个人的openclaw，当有任务需要处理时，会自动调用openclaw来完成任务
+
+### 特性包括：
+- 允许用户绑定本地的openclaw，当有共享待办分配给自己时，会自动把待办的内容分发给openclaw来完成任务
+- 在共享卡片中A at B后，B的openclaw会收到该条待办，并启动任务规划、拆解，完成方案设计
+- 完成方案设计后，系统会将方案设计更新到该条待办的进度中，用户可以在待办中查看
+
+### 技术要求：
+- 如何绑定openclaw需要调研下openclaw的开放能力，按照通用的标准做法来实现
+
+### 使用引导收尾
+
+#### 1. 本地安装方式
+
+当前仓库已经包含 OpenClaw 插件目录：
+
+- `plugins/openclaw-channel-aitodo`
+
+如果是本地开发或同仓库联调，不需要先发布插件，直接本地安装：
+
+```bash
+openclaw plugins install --link /Volumes/external/code/nodejs/todo_manager_openclaw_cc_mm/plugins/openclaw-channel-aitodo
+openclaw plugins enable aitodo
+openclaw daemon restart
+```
+
+然后写入 channel 配置：
+
+```bash
+openclaw config set channels.aitodo '{"enabled":true,"url":"ws://127.0.0.1:3002/api/v1/openclaw/ws","token":"<connect-token>","deviceName":"aitodo-local"}' --strict-json
+```
+
+说明：
+
+- 这里使用 `openclaw config set channels.aitodo ...`，而不是 `openclaw channels add --channel aitodo ...`
+- 这样与当前插件实现和联调方式保持一致
+- 安装插件后需要执行一次 `openclaw daemon restart`，让 Gateway 重新加载插件
+- 不要同时保留“本地 `--link` 安装”和“npm 包安装”两份 `aitodo` 插件，否则会出现 duplicate plugin id 警告
+
+#### 2. 根据 `cardId` 路由到不同 agent / session
+
+AITodo 插件分两层做路由：
+
+1. `channels.aitodo.routingPeerTemplate / rules`
+作用：
+把 `todoId` / `cardId` 等字段转换成稳定的 OpenClaw peer id
+
+2. OpenClaw 顶层 `bindings`
+作用：
+再把这个 peer id 绑定到具体 agent
+
+##### 默认：按 todoId 隔离 session
+
+默认行为等同于：
+
+```json
+{
+  "channels": {
+    "aitodo": {
+      "routingPeerTemplate": "{serverSessionKey}"
+    }
+  }
+}
+```
+
+这意味着每个 todo 一个 session。
+
+##### 按 cardId 聚合同一个 session
+
+如果同一卡片下多个 todo 希望共享同一个上下文：
+
+```json
+{
+  "channels": {
+    "aitodo": {
+      "routingPeerTemplate": "aitodo:card:{cardId}"
+    }
+  }
+}
+```
+
+##### 指定 `cardId` 路由到不同 agent
+
+先在 channel 侧把特定卡片映射成稳定 peer：
+
+```json
+{
+  "channels": {
+    "aitodo": {
+      "routingPeerTemplate": "{serverSessionKey}",
+      "rules": [
+        {
+          "field": "cardId",
+          "pattern": "^shared-card-arch$",
+          "routingPeerTemplate": "aitodo:card:{cardId}"
+        },
+        {
+          "field": "cardId",
+          "pattern": "^shared-card-pm$",
+          "routingPeerTemplate": "aitodo:card:{cardId}"
+        }
+      ]
+    }
+  }
+}
+```
+
+再在 OpenClaw 顶层 `bindings` 里绑定 agent：
+
+```json
+{
+  "bindings": [
+    {
+      "match": {
+        "channel": "aitodo",
+        "peer": { "kind": "direct", "id": "aitodo:card:shared-card-arch" }
+      },
+      "agentId": "architect"
+    },
+    {
+      "match": {
+        "channel": "aitodo",
+        "peer": { "kind": "direct", "id": "aitodo:card:shared-card-pm" }
+      },
+      "agentId": "pm"
+    }
+  ]
+}
+```
+
+#### 3. 插件是否需要发布
+
+分两种情况：
+
+- 本地开发 / 同仓库联调：不需要发布，直接 `openclaw plugins install --link <local-path>`
+- 给其他机器或正式环境使用：建议发布到 npm registry
+
+推荐做法：
+
+- 公网分发：发布到 npm
+- 内部环境：发布到 GitHub Packages 或私有 npm registry
+
+保持和使用引导一致的原则是：
+
+- 如果还没有发布，就在引导里写本地路径安装
+- 如果已经发布，就把后端环境里的 `OPENCLAW_PLUGIN_PACKAGE_NAME` 与 `OPENCLAW_PLUGIN_INSTALL_COMMAND_TEMPLATE` 改成实际发布方式
+
+例如发布到 npm 后，可配置成：
+
+```env
+OPENCLAW_PLUGIN_PACKAGE_NAME=@ld0809/openclaw-channel-aitodo
+OPENCLAW_PLUGIN_INSTALL_COMMAND_TEMPLATE=openclaw plugins install {{pluginPackageName}}
+```
+
+而本地联调时，建议直接按本地路径安装，不依赖包发布；正式按包名安装后，同样建议执行一次 `openclaw daemon restart`。
 
 ## 辅助信息
 ### 本地测试账号

@@ -1,0 +1,50 @@
+{
+  "name": "@ld0809/openclaw-channel-aitodo",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "AITodo channel plugin for OpenClaw",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ld0809/aitodo.git",
+    "directory": "plugins/openclaw-channel-aitodo"
+  },
+  "files": [
+    "README.md",
+    "index.js",
+    "openclaw.plugin.json",
+    "setup-entry.js",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test ./test/*.test.mjs"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "setupEntry": "./setup-entry.js",
+    "channel": {
+      "id": "aitodo",
+      "label": "AITodo",
+      "selectionLabel": "AITodo",
+      "detailLabel": "AITodo Assistant",
+      "docsPath": "/channels/channel-routing",
+      "docsLabel": "channel-routing",
+      "blurb": "Connect OpenClaw to AITodo shared todo dispatches.",
+      "systemImage": "checklist",
+      "order": 95,
+      "quickstartAllowFrom": false
+    },
+    "install": {
+      "npmSpec": "@ld0809/openclaw-channel-aitodo",
+      "localPath": "plugins/openclaw-channel-aitodo",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.3.28"
+    }
+  }
+}
