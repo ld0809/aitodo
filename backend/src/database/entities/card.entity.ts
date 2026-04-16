@@ -13,6 +13,8 @@ import { Tag } from './tag.entity';
 import { Todo } from './todo.entity';
 import { User } from './user.entity';
 
+export type CardStatus = 'active' | 'archived';
+
 @Entity('cards')
 export class Card {
   @PrimaryGeneratedColumn('uuid')
@@ -29,6 +31,9 @@ export class Card {
 
   @Column({ name: 'card_type', default: 'personal' })
   cardType!: 'personal' | 'shared';
+
+  @Column({ default: 'active' })
+  status!: CardStatus;
 
   @Column({ name: 'sort_by', default: 'due_at' })
   sortBy!: 'due_at' | 'created_at' | 'execute_at';

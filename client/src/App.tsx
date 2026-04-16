@@ -12,6 +12,7 @@ import { RequirementQueryPage } from './pages/RequirementQueryPage';
 import { BugQueryPage } from './pages/BugQueryPage';
 import { TodoQueryPage } from './pages/TodoQueryPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ArchivedCardsPage } from './pages/ArchivedCardsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -67,6 +68,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/archived-cards"
+            element={
+              <ProtectedRoute>
+                <ArchivedCardsPage />
               </ProtectedRoute>
             }
           />

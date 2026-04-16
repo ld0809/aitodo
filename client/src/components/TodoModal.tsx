@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Card, CardParticipant, Todo, Tag } from '../types';
 import type { CreateTodoDto, UpdateTodoDto } from '../api/todos';
+import { Button } from './ui/Button';
 import './Modal.css';
 
 interface TodoModalProps {
@@ -151,7 +152,7 @@ export function TodoModal({
   const isSharedCard = (card?.cardType ?? 'personal') === 'shared';
   const availableTags = useMemo(
     () => (isSharedCard ? (Array.isArray(card?.tags) ? card.tags : []) : (Array.isArray(tags) ? tags : [])),
-    [card?.tags, isSharedCard, tags],
+    [card, isSharedCard, tags],
   );
   const availableTagIdSet = useMemo(() => new Set(availableTags.map((tag) => tag.id)), [availableTags]);
 
@@ -451,12 +452,12 @@ export function TodoModal({
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose} disabled={isSaving}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
               取消
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+            </Button>
+            <Button type="submit" variant="primary" disabled={isSaving}>
               {isSaving ? '提交中...' : todo ? '保存' : '创建'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

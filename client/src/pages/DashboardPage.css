@@ -89,6 +89,7 @@
   opacity: 0;
   transition: 0.2s;
   flex-shrink: 0;
+  position: relative;
 }
 
 .card:hover .card-actions {
@@ -109,6 +110,18 @@
   font-size: 14px;
 }
 
+.card-action-menu-wrap {
+  position: relative;
+}
+
+.card-actions .card-actions__more-trigger {
+  width: auto;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .card-actions button:hover {
   background: var(--bg);
   color: var(--txt);
@@ -121,6 +134,33 @@
 
 .card-actions .toggle-completed-btn.active {
   color: var(--success);
+}
+
+.card-action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r2) + 2px);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  z-index: 12;
+}
+
+.card-action-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+  border-radius: var(--r);
+}
+
+.card-action-menu button.danger {
+  color: var(--danger);
 }
 
 .card-quick-input {
@@ -490,54 +530,6 @@
   background: var(--bg2);
   font-size: 12px;
   color: var(--txt2);
-}
-
-.progress-todo-title {
-  margin-bottom: 10px;
-  font-size: 14px;
-  color: var(--txt2);
-  font-weight: 500;
-}
-
-.progress-history {
-  margin-top: 16px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-
-.progress-history-title {
-  font-size: 13px;
-  color: var(--txt2);
-  margin-bottom: 8px;
-}
-
-.progress-history-empty {
-  font-size: 13px;
-  color: var(--txt3);
-}
-
-.progress-history-item {
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  background: var(--bg);
-  margin-bottom: 8px;
-}
-
-.progress-history-item:last-child {
-  margin-bottom: 0;
-}
-
-.progress-history-time {
-  font-size: 12px;
-  color: var(--txt3);
-  margin-bottom: 6px;
-}
-
-.progress-history-content {
-  font-size: 13px;
-  color: var(--txt);
-  white-space: pre-wrap;
 }
 
 .ai-report-modal {

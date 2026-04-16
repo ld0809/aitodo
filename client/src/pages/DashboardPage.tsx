@@ -15,6 +15,9 @@ import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
 import { TodoModal } from '../components/TodoModal';
 import { TagModal } from '../components/TagModal';
+import { ProgressModal } from '../components/ProgressModal';
+import { Button } from '../components/ui/Button';
+import { getTodosForCard, isCompletedTodo } from '../lib/cardTodos';
 import { sortTodosForCardDisplay } from '../lib/todoSort';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -158,6 +161,7 @@ export function DashboardPage() {
   const [reportEndDate, setReportEndDate] = useState(defaultLastWeekRange.endDate);
   const [aiReportResult, setAiReportResult] = useState<AiReportResult | null>(null);
   const [pendingDeleteCardId, setPendingDeleteCardId] = useState<string | null>(null);
+  const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [defaultTagIds, setDefaultTagIds] = useState<string[]>([]);
   const [showCompletedByCard, setShowCompletedByCard] = useState<Record<string, boolean>>({});
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
@@ -172,6 +176,7 @@ export function DashboardPage() {
   const GRID_MARGIN: [number, number] = [10, 10];
   const [gridWidth, setGridWidth] = useState<number>(Math.max(320, window.innerWidth - 48));
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const cardMenuRef = useRef<HTMLDivElement | null>(null);
   const gridColsByViewport: Record<LayoutViewport, number> = {
     mobile: 1,
     tablet: 3,
@@ -211,6 +216,21 @@ export function DashboardPage() {
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!openCardMenuId) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cardMenuRef.current && !cardMenuRef.current.contains(event.target as Node)) {
+        setOpenCardMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openCardMenuId]);
 
   const currentViewport = useMemo<LayoutViewport>(() => {
     const cardsPerRow = Math.max(1, Math.floor(gridWidth / CARD_MIN_PIXEL_WIDTH));
@@ -389,6 +409,23 @@ export function DashboardPage() {
     },
   });
 
+  const archiveCardMutation = useMutation({
+    mutationFn: (id: string) => cardsApi.archive(id),
+    onSuccess: (_, archivedCardId) => {
+      queryClient.removeQueries({ queryKey: ['card-todos', userScope] });
+      queryClient.setQueryData(['cards', userScope, currentViewport], (previous: Card[] | undefined) => {
+        if (!Array.isArray(previous)) {
+          return previous;
+        }
+        return previous.filter((card) => card.id !== archivedCardId);
+      });
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
+    },
+    onError: (error: unknown) => {
+      alert(getErrorMessage(error, '归档卡片失败'));
+    },
+  });
+
   const createTagMutation = useMutation({
     mutationFn: (data: CreateTagDto) => tagsApi.create(data),
     onSuccess: () => {
@@ -440,7 +477,7 @@ export function DashboardPage() {
   const buildMentionCandidates = (card?: Card | null) => {
     const candidates = [
       ...(card?.owner ? [card.owner] : []),
-      ...((Array.isArray(card?.participants) ? card?.participants : [])),
+      ...((card && Array.isArray(card.participants)) ? card.participants : []),
     ];
     return [...new Map(candidates.map((item) => [item.id, item])).values()];
   };
@@ -603,7 +640,13 @@ export function DashboardPage() {
   };
 
   const handleDeleteCard = (id: string) => {
+    setOpenCardMenuId(null);
     setPendingDeleteCardId(id);
+  };
+
+  const handleArchiveCard = (id: string) => {
+    setOpenCardMenuId(null);
+    archiveCardMutation.mutate(id);
   };
 
   const handleToggleCompletedVisibility = (cardId: string) => {
@@ -830,24 +873,6 @@ export function DashboardPage() {
     applyResolvedLayout(layout, { compactUp: true });
   };
 
-  const getTodosForCard = (card: Card) => {
-    if (card.pluginType === 'tapd' || card.cardType === 'shared') {
-      return remoteCardTodos[card.id] || [];
-    }
-
-    const cardTagIds = new Set((Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id));
-    const relatedByCard = (Array.isArray(todos) ? todos : []).filter((todo) => todo.cardId === card.id);
-    const relatedByTags = cardTagIds.size === 0
-      ? []
-      : (Array.isArray(todos) ? todos : []).filter((todo) =>
-          (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.has(tag.id)),
-        );
-
-    return Array.from(new Map([...relatedByCard, ...relatedByTags].map((todo) => [todo.id, todo])).values());
-  };
-
-  const isCompletedTodo = (todo: Todo) => todo.status === 'done' || todo.status === 'completed';
-
   const gridLayout = useMemo(() => {
     const baseLayout = (Array.isArray(cards) ? cards : []).map((card: Card) => {
         const normalizedW = CARD_W;
@@ -880,7 +905,9 @@ export function DashboardPage() {
         onNewCard={() => handleOpenCardModal()}
         onOpenAiReport={handleOpenAiReportModal}
         onOpenTags={() => setShowTagModal(true)}
+        onOpenArchivedCards={() => navigate('/archived-cards')}
         onOpenProfileSettings={() => navigate('/settings/profile')}
+        onOpenOrganizationSettings={() => navigate('/settings/organizations')}
         onOpenGoalSettings={() => {
           setGoalDraft(user?.target || '');
           setShowGoalModal(true);
@@ -915,7 +942,7 @@ export function DashboardPage() {
           {(Array.isArray(cards) ? cards : []).map((card: Card) => (
             <div key={card.id} className="grid-card-inner">
               {(() => {
-                const cardTodos = getTodosForCard(card);
+                const cardTodos = getTodosForCard(card, todos, remoteCardTodos);
                 const sortedCardTodos = sortTodosForCardDisplay(
                   Array.isArray(cardTodos) ? cardTodos : [],
                 );
@@ -1002,7 +1029,48 @@ export function DashboardPage() {
                       <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenCardModal(card); }}>✎</button>
                     )}
                     {isCardOwner && (
-                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDeleteCard(card.id); }}>🗑</button>
+                      <div
+                        className="card-action-menu-wrap"
+                        ref={openCardMenuId === card.id ? cardMenuRef : null}
+                      >
+                        <button
+                          className="card-actions__more-trigger"
+                          aria-haspopup="menu"
+                          aria-expanded={openCardMenuId === card.id}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenCardMenuId((prev) => (prev === card.id ? null : card.id));
+                          }}
+                        >
+                          更多
+                        </button>
+                        {openCardMenuId === card.id && (
+                          <div className="card-action-menu" role="menu" aria-label={`${card.name}更多操作`}>
+                            <button
+                              role="menuitem"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleArchiveCard(card.id);
+                              }}
+                            >
+                              归档卡片
+                            </button>
+                            <button
+                              role="menuitem"
+                              className="danger"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCard(card.id);
+                              }}
+                            >
+                              删除卡片
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1069,64 +1137,18 @@ export function DashboardPage() {
       )}
 
       {showProgressModal && activeProgressTodo && (
-        <div className="overlay open" onClick={() => { setShowProgressModal(false); setActiveProgressTodo(null); }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">更新进度</div>
-              <button className="modal-close" onClick={() => { setShowProgressModal(false); setActiveProgressTodo(null); }}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="progress-todo-title">{activeProgressTodo.content}</div>
-              <textarea
-                className="goal-input"
-                rows={4}
-                maxLength={2000}
-                placeholder="输入当前进度，例如：已完成接口联调，待补充异常处理。"
-                value={progressDraft}
-                onChange={(e) => setProgressDraft(e.target.value)}
-              />
-              <div className="goal-meta">
-                <span>本地待办可更新进度，第三方待办不支持。</span>
-                <span>{progressDraft.length}/2000</span>
-              </div>
-
-              <div className="progress-history">
-                <div className="progress-history-title">最近进度记录</div>
-                {(Array.isArray(todoProgressEntries) ? todoProgressEntries : []).length === 0 ? (
-                  <div className="progress-history-empty">暂无记录</div>
-                ) : (
-                  (Array.isArray(todoProgressEntries) ? todoProgressEntries : []).map((entry) => (
-                    <div key={entry.id} className="progress-history-item">
-                      <div className="progress-history-time">{new Date(entry.createdAt).toLocaleString('zh-CN')}</div>
-                      <div className="progress-history-content">{entry.content}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  setShowProgressModal(false);
-                  setActiveProgressTodo(null);
-                }}
-                disabled={createProgressMutation.isPending}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSaveProgress}
-                disabled={createProgressMutation.isPending}
-              >
-                {createProgressMutation.isPending ? '保存中...' : '保存进度'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ProgressModal
+          todo={activeProgressTodo}
+          entries={Array.isArray(todoProgressEntries) ? todoProgressEntries : []}
+          draft={progressDraft}
+          onDraftChange={setProgressDraft}
+          onSave={handleSaveProgress}
+          isSaving={createProgressMutation.isPending}
+          onClose={() => {
+            setShowProgressModal(false);
+            setActiveProgressTodo(null);
+          }}
+        />
       )}
 
       {showAiReportModal && (
@@ -1172,17 +1194,17 @@ export function DashboardPage() {
               )}
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-outline" onClick={() => setShowAiReportModal(false)}>
+              <Button type="button" variant="secondary" onClick={() => setShowAiReportModal(false)}>
                 关闭
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="primary"
                 onClick={handleGenerateAiReport}
                 disabled={generateAiReportMutation.isPending}
               >
                 {generateAiReportMutation.isPending ? '生成中...' : '生成报告'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1198,8 +1220,8 @@ export function DashboardPage() {
             </div>
             <div className="modal-body">确定要删除这个卡片吗？</div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-outline" onClick={() => setPendingDeleteCardId(null)}>取消</button>
-              <button type="button" className="btn btn-primary" onClick={confirmDeleteCard}>删除</button>
+              <Button type="button" variant="secondary" onClick={() => setPendingDeleteCardId(null)}>取消</Button>
+              <Button type="button" variant="danger" onClick={confirmDeleteCard}>删除</Button>
             </div>
           </div>
         </div>
@@ -1239,22 +1261,22 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="modal-footer">
-              <button
+              <Button
                 type="button"
-                className="btn btn-outline"
+                variant="secondary"
                 onClick={() => setShowGoalModal(false)}
                 disabled={updateProfileMutation.isPending}
               >
                 取消
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="primary"
                 onClick={handleSaveGoal}
                 disabled={updateProfileMutation.isPending}
               >
                 {updateProfileMutation.isPending ? '保存中...' : '保存'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

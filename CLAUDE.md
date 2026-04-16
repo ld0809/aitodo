@@ -217,6 +217,14 @@ All endpoints return standardized responses via `ResponseInterceptor`:
 3. Use Axios + TanStack Query for API calls
 4. Add Playwright test in `client/tests/`
 
+### Shared UI Component Rules
+
+1. Reusable UI primitives must live under `client/src/components/ui/`.
+2. Buttons must use the shared component at `client/src/components/ui/Button.tsx`; do not add new page-local primary/secondary/danger button styles when an action button is needed.
+3. If a button or other shared control needs a new appearance, add or extend a shared variant in the component library first, then migrate callers to it.
+4. Radius, spacing, colors, borders, and shadows should stay consistent with the tokens in `client/src/index.css`; avoid inventing a separate visual language in feature CSS.
+5. When reviewing or implementing frontend work, treat “can this be a shared component?” as a default design check, not an optional cleanup step.
+
 ### Adding a New Plugin (Phase 2+)
 
 1. Create adapter in `backend/src/plugins/adapters/[plugin-name].plugin.ts`

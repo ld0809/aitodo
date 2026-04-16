@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Tag } from '../types';
 import type { CreateTagDto, UpdateTagDto } from '../api/tags';
+import { Button } from './ui/Button';
 import './Modal.css';
 
 interface TagModalProps {
@@ -76,9 +77,9 @@ export function TagModal({ tags, onSave, onDelete, onClose, isSaving = false }: 
                 onChange={(e) => setNewTagName(e.target.value)}
                 disabled={isSaving}
               />
-              <button type="submit" className="btn btn-primary" style={{ width: 'auto' }} disabled={isSaving}>
+              <Button type="submit" variant="primary" disabled={isSaving}>
                 {isSaving ? '提交中...' : '添加'}
-              </button>
+              </Button>
             </div>
             <div className="color-picker" style={{ marginTop: '8px' }}>
               {TAG_COLORS.map((color) => (
@@ -152,9 +153,9 @@ export function TagModal({ tags, onSave, onDelete, onClose, isSaving = false }: 
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-outline" onClick={onClose} disabled={isSaving}>
+          <Button variant="secondary" onClick={onClose} disabled={isSaving}>
             关闭
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -30,6 +30,11 @@ Frontend (`client/`):
 - Backend follows NestJS naming: `*.module.ts`, `*.controller.ts`, `*.service.ts`, DTOs in `dto/`.
 - Frontend components/pages/stores use PascalCase for components (`TodoCard.tsx`) and camelCase for helpers/API modules.
 - Keep files focused: avoid mixing UI, state, and API concerns in one file.
+- Frontend shared UI must be built on reusable components under `client/src/components/ui` when the same interaction pattern appears in multiple places.
+- New buttons must reuse the shared button component (current entry: `client/src/components/ui/Button.tsx`); do not create page-local button styles for primary/secondary/danger actions.
+- When a shared control needs a new visual style or state, extend the shared component and its variants centrally instead of redefining radius, colors, hover, or disabled styles in page/component CSS.
+- Before adding a new UI primitive, check whether an existing shared component can be reused or extended. Repeated ad hoc redesign is not acceptable.
+- Design tokens such as radius, colors, borders, and shadows should stay aligned with the global variables in `client/src/index.css`; avoid hard-coding a separate visual system in feature files.
 
 ## Testing Guidelines
 - Backend tests use Jest and `*.e2e-spec.ts` naming under `backend/test`.

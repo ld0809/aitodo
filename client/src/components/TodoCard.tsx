@@ -12,6 +12,8 @@ interface TodoCardProps {
   canUpdateProgress?: boolean;
   onOpenProgress?: () => void;
   hiddenTagIds?: string[];
+  readOnly?: boolean;
+  progressButtonTitle?: string;
 }
 
 export function TodoCard({
@@ -23,6 +25,8 @@ export function TodoCard({
   canUpdateProgress = false,
   onOpenProgress,
   hiddenTagIds = [],
+  readOnly = false,
+  progressButtonTitle = '更新进度',
 }: TodoCardProps) {
   const isDone = todo.status === 'done' || todo.status === 'completed';
   const hiddenTagIdSet = new Set(hiddenTagIds);
@@ -75,13 +79,18 @@ export function TodoCard({
     : null;
 
   return (
-    <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
-      if (todo.url) {
-        window.open(todo.url, '_blank');
-      } else {
-        onEdit();
-      }
-    }}>
+    <div
+      className={`todo-item ${isDone ? 'done' : ''} ${readOnly ? 'readonly' : ''}`}
+      onClick={() => {
+        if (todo.url) {
+          window.open(todo.url, '_blank');
+          return;
+        }
+        if (!readOnly) {
+          onEdit();
+        }
+      }}
+    >
       <div className="todo-row">
         {(showToggle || canUpdateProgress) && (
           <div className="todo-left">
@@ -100,7 +109,8 @@ export function TodoCard({
               <button
                 type="button"
                 className="progress-entry-btn"
-                title="更新进度"
+                title={progressButtonTitle}
+                aria-label={progressButtonTitle}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenProgress?.();

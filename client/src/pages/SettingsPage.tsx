@@ -3,12 +3,13 @@ import { NavLink, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { usersApi } from '../api/users';
+import { organizationsApi } from '../api/organizations';
 import { openClawApi } from '../api/openclaw';
 import { useAuthStore } from '../store/authStore';
-import type { OpenClawBinding } from '../types';
+import type { OpenClawBinding, Organization, OrganizationMember } from '../types';
 import './SettingsPage.css';
 
-type SettingsSection = 'profile' | 'openclaw';
+type SettingsSection = 'profile' | 'organizations' | 'openclaw';
 
 const SETTINGS_NAV_ITEMS: Array<{
   id: SettingsSection;
@@ -19,6 +20,11 @@ const SETTINGS_NAV_ITEMS: Array<{
     id: 'profile',
     label: '个人信息',
     description: '昵称与账号资料',
+  },
+  {
+    id: 'organizations',
+    label: '组织管理',
+    description: '组织与成员选择',
   },
   {
     id: 'openclaw',
@@ -42,7 +48,7 @@ export function SettingsPage() {
   const updateUser = useAuthStore((state) => state.updateUser);
 
   const activeSection = useMemo<SettingsSection | null>(() => {
-    if (section === 'profile' || section === 'openclaw') {
+    if (section === 'profile' || section === 'organizations' || section === 'openclaw') {
       return section;
     }
     if (section === undefined) {
@@ -54,6 +60,9 @@ export function SettingsPage() {
   const userScope = user?.id ?? 'anonymous';
   const [nicknameDraft, setNicknameDraft] = useState('');
   const [profileFormDirty, setProfileFormDirty] = useState(false);
+  const [newOrganizationName, setNewOrganizationName] = useState('');
+  const [organizationMemberDrafts, setOrganizationMemberDrafts] = useState<Record<string, string>>({});
+  const [organizationMembersById, setOrganizationMembersById] = useState<Record<string, OrganizationMember[]>>({});
   const [openClawDeviceLabel, setOpenClawDeviceLabel] = useState('');
   const [openClawTimeoutSeconds, setOpenClawTimeoutSeconds] = useState('900');
   const [openClawEnabled, setOpenClawEnabled] = useState(true);
@@ -107,6 +116,12 @@ export function SettingsPage() {
     queryFn: () => openClawApi.getMe().then((res) => res.data),
   });
 
+  const { data: organizations = [] } = useQuery({
+    queryKey: ['organizations', userScope],
+    enabled: !!user && activeSection === 'organizations',
+    queryFn: () => organizationsApi.getAll().then((res) => res.data),
+  });
+
   useEffect(() => {
     if (meProfile) {
       updateUser(meProfile);
@@ -132,15 +147,52 @@ export function SettingsPage() {
       return;
     }
     handleHydrateOpenClawForm(openClawBinding);
-  }, [
-    openClawFormDirty,
-    openClawBinding?.connectToken,
-    openClawBinding?.deviceLabel,
-    openClawBinding?.timeoutSeconds,
-    openClawBinding?.enabled,
-    openClawBinding?.connectionStatus,
-    openClawBinding?.suggestedDeviceLabel,
-  ]);
+  }, [openClawFormDirty, openClawBinding]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (activeSection !== 'organizations') {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (organizations.length === 0) {
+      setOrganizationMembersById({});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    Promise.all(
+      organizations.map(async (organization) => {
+        const response = await organizationsApi.getMembers(organization.id);
+        return {
+          organizationId: organization.id,
+          members: Array.isArray(response.data) ? response.data : [],
+        };
+      }),
+    )
+      .then((results) => {
+        if (cancelled) {
+          return;
+        }
+        const nextMembersById = results.reduce<Record<string, OrganizationMember[]>>((accumulator, item) => {
+          accumulator[item.organizationId] = item.members;
+          return accumulator;
+        }, {});
+        setOrganizationMembersById(nextMembersById);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrganizationMembersById({});
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, organizations]);
 
   const updateProfileMutation = useMutation({
     mutationFn: (data: { nickname?: string }) => usersApi.updateMe(data),
@@ -174,6 +226,22 @@ export function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['openclaw-me', userScope] });
     },
+  });
+
+  const createOrganizationMutation = useMutation({
+    mutationFn: (data: { name: string }) => organizationsApi.create(data),
+    onSuccess: (response) => {
+      const createdOrganization = response.data;
+      queryClient.setQueryData<Organization[]>(['organizations', userScope], (previous = []) => [createdOrganization, ...previous]);
+      setOrganizationMembersById((prev) => ({
+        ...prev,
+        [createdOrganization.id]: createdOrganization.owner ? [createdOrganization.owner] : [],
+      }));
+    },
+  });
+
+  const addOrganizationMemberMutation = useMutation({
+    mutationFn: (data: { organizationId: string; email: string }) => organizationsApi.addMember(data.organizationId, { email: data.email }),
   });
 
   const handleSaveProfile = async () => {
@@ -254,6 +322,56 @@ export function SettingsPage() {
     }
   };
 
+  const handleCreateOrganization = async () => {
+    const name = newOrganizationName.trim();
+    if (!name) {
+      return;
+    }
+
+    try {
+      await createOrganizationMutation.mutateAsync({ name });
+      setNewOrganizationName('');
+      alert('组织已创建');
+    } catch (error) {
+      alert(getErrorMessage(error, '创建组织失败'));
+    }
+  };
+
+  const handleAddOrganizationMember = async (organizationId: string) => {
+    const email = organizationMemberDrafts[organizationId]?.trim().toLowerCase() ?? '';
+    if (!email) {
+      return;
+    }
+
+    try {
+      const response = await addOrganizationMemberMutation.mutateAsync({ organizationId, email });
+      setOrganizationMemberDrafts((prev) => ({
+        ...prev,
+        [organizationId]: '',
+      }));
+      setOrganizationMembersById((prev) => {
+        const currentMembers = prev[organizationId] ?? [];
+        if (currentMembers.some((member) => member.id === response.data.id)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [organizationId]: [...currentMembers, response.data],
+        };
+      });
+      queryClient.setQueryData<Organization[]>(['organizations', userScope], (previous = []) =>
+        previous.map((organization) =>
+          organization.id === organizationId
+            ? { ...organization, memberCount: Math.max(organization.memberCount, (organizationMembersById[organizationId]?.length ?? 0) + 1) }
+            : organization,
+        ),
+      );
+      alert('组织成员已添加');
+    } catch (error) {
+      alert(getErrorMessage(error, '添加组织成员失败'));
+    }
+  };
+
   if (activeSection === null) {
     return <Navigate to="/settings/profile" replace />;
   }
@@ -279,18 +397,11 @@ export function SettingsPage() {
     return '未配置';
   })();
 
-  const profileTitle = activeSection === 'profile' ? '个人信息' : 'OpenClaw 绑定';
-  const profileDescription = activeSection === 'profile'
-    ? '管理昵称和对外展示信息。'
-    : '配置本地 OpenClaw 连接、插件启用和自动分发。';
-
   return (
     <div className="settings-page">
       <header className="settings-topbar">
         <div>
           <div className="settings-topbar-kicker">设置中心</div>
-          <h1>{profileTitle}</h1>
-          <p>{profileDescription}</p>
         </div>
         <button type="button" className="settings-btn settings-btn-secondary" onClick={() => navigate('/dashboard')}>
           返回看板
@@ -660,6 +771,96 @@ export function SettingsPage() {
                 >
                   {openClawMutating ? '保存中...' : '保存绑定设置'}
                 </button>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'organizations' && (
+            <section className="settings-panel">
+              <div className="settings-panel-header">
+                <div>
+                  <h2>组织与成员</h2>
+                  <p>共享卡片添加参与人员时，可以先选组织，再从组织成员中选择；仍然保留手动输入邮箱。</p>
+                </div>
+              </div>
+
+              <section className="settings-organization-create">
+                <div>
+                  <div className="settings-organization-create-title">新建组织</div>
+                  <div className="settings-organization-create-desc">任何账号都可以创建自己的组织，创建者默认成为组织拥有者与首位成员。</div>
+                </div>
+                <div className="settings-organization-create-form">
+                  <input
+                    className="settings-input settings-input-single"
+                    placeholder="输入组织名称"
+                    value={newOrganizationName}
+                    onChange={(e) => setNewOrganizationName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-primary"
+                    onClick={handleCreateOrganization}
+                    disabled={createOrganizationMutation.isPending}
+                  >
+                    {createOrganizationMutation.isPending ? '创建中...' : '创建组织'}
+                  </button>
+                </div>
+              </section>
+
+              <div className="settings-organization-list">
+                {organizations.map((organization) => {
+                  const members = organizationMembersById[organization.id] ?? [];
+                  return (
+                    <article
+                      key={organization.id}
+                      className="settings-organization-card"
+                      data-testid={`organization-card-${organization.id}`}
+                    >
+                      <div className="settings-organization-card-head">
+                        <div>
+                          <h3>{organization.name}</h3>
+                          <p>成员数：{organization.memberCount}</p>
+                        </div>
+                        <span className="settings-status-badge">{organization.ownerId === user?.id ? '拥有者' : '成员'}</span>
+                      </div>
+
+                      <div className="settings-organization-member-list">
+                        {members.map((member) => (
+                          <span key={member.id} className="settings-organization-member-chip">
+                            {member.nickname?.trim() || member.email}
+                          </span>
+                        ))}
+                        {members.length === 0 && <span className="settings-organization-empty">暂无成员</span>}
+                      </div>
+
+                      {organization.ownerId === user?.id && (
+                        <div className="settings-organization-add-form">
+                          <input
+                            className="settings-input settings-input-single"
+                            placeholder="输入成员邮箱"
+                            value={organizationMemberDrafts[organization.id] ?? ''}
+                            onChange={(e) => setOrganizationMemberDrafts((prev) => ({
+                              ...prev,
+                              [organization.id]: e.target.value,
+                            }))}
+                          />
+                          <button
+                            type="button"
+                            className="settings-btn settings-btn-secondary"
+                            onClick={() => void handleAddOrganizationMember(organization.id)}
+                            disabled={addOrganizationMemberMutation.isPending}
+                          >
+                            添加成员
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+
+                {organizations.length === 0 && (
+                  <div className="settings-organization-empty-card">当前还没有组织，先创建一个即可在共享卡片中复用成员。</div>
+                )}
               </div>
             </section>
           )}

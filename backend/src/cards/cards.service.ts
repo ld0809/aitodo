@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, EntityManager, In, Repository } from 'typeorm';
-import { Card } from '../database/entities/card.entity';
+import { Card, type CardStatus } from '../database/entities/card.entity';
 import { CardUserLayout } from '../database/entities/card-user-layout.entity';
 import { Tag } from '../database/entities/tag.entity';
 import { Todo } from '../database/entities/todo.entity';
@@ -17,6 +17,7 @@ type LayoutByViewport = Partial<Record<LayoutViewport, LayoutItem>>;
 
 const DEFAULT_LAYOUT_VIEWPORT: LayoutViewport = 'desktop_normal';
 const VALID_LAYOUT_VIEWPORTS = new Set<LayoutViewport>(['mobile', 'tablet', 'desktop_normal', 'desktop_big']);
+const VALID_CARD_STATUSES = new Set<CardStatus>(['active', 'archived']);
 
 @Injectable()
 export class CardsService {
@@ -62,17 +63,32 @@ export class CardsService {
     return this.findOne(userId, savedCard.id);
   }
 
-  async findAll(userId: string, viewport?: LayoutViewport) {
-    const cards = await this.cardRepository
+  async findAll(userId: string, viewport?: LayoutViewport, status?: CardStatus) {
+    const normalizedStatus = this.resolveCardStatus(status);
+    const queryBuilder = this.cardRepository
       .createQueryBuilder('card')
       .leftJoinAndSelect('card.tags', 'tag')
-      .leftJoinAndSelect('card.participants', 'participant')
-      .leftJoin('card.participants', 'accessibleParticipant')
-      .where('card.user_id = :userId', { userId })
-      .orWhere('card.card_type = :sharedType AND accessibleParticipant.id = :userId', { sharedType: 'shared', userId })
-      .orderBy('card.created_at', 'DESC')
-      .distinct(true)
-      .getMany();
+      .leftJoinAndSelect('card.participants', 'participant');
+
+    if (normalizedStatus === 'archived') {
+      queryBuilder
+        .where('card.user_id = :userId', { userId })
+        .andWhere('card.status = :status', { status: normalizedStatus });
+    } else {
+      queryBuilder
+        .leftJoin('card.participants', 'accessibleParticipant')
+        .where(
+          new Brackets((qb) => {
+            qb.where('card.user_id = :userId', { userId }).orWhere(
+              'card.card_type = :sharedType AND accessibleParticipant.id = :userId',
+              { sharedType: 'shared', userId },
+            );
+          }),
+        )
+        .andWhere('card.status = :status', { status: normalizedStatus });
+    }
+
+    const cards = await queryBuilder.orderBy('card.created_at', 'DESC').distinct(true).getMany();
 
     const ownerIds = [...new Set(cards.map((card) => card.userId).filter(Boolean))];
     const owners = ownerIds.length
@@ -156,6 +172,15 @@ export class CardsService {
     await this.cardRepository.delete({ id });
 
     return { id };
+  }
+
+  async archive(userId: string, id: string) {
+    const card = await this.findOwnedCardOrThrow(userId, id);
+    if (card.status !== 'archived') {
+      card.status = 'archived';
+      await this.cardRepository.save(card);
+    }
+    return this.findOne(userId, id);
   }
 
   async updateLayout(userId: string, id: string, dto: UpdateLayoutDto) {
@@ -257,6 +282,10 @@ export class CardsService {
       return card;
     }
 
+    if (card.status === 'archived') {
+      throw new NotFoundException('card not found');
+    }
+
     if (card.cardType !== 'shared') {
       throw new NotFoundException('card not found');
     }
@@ -274,6 +303,7 @@ export class CardsService {
       .createQueryBuilder('card')
       .leftJoin('card.participants', 'participant')
       .where('card.id IN (:...cardIds)', { cardIds })
+      .andWhere('card.status = :status', { status: 'active' })
       .andWhere(
         new Brackets((qb) => {
           qb.where('card.user_id = :userId', { userId })
@@ -431,9 +461,23 @@ export class CardsService {
   }
 
   private toCardResponse(card: Card) {
-    const { layoutsJson: _layoutsJson, user: _user, ...restCard } = card as Card & { layoutsJson?: string | null; user?: User };
     return {
-      ...restCard,
+      id: card.id,
+      userId: card.userId,
+      name: card.name,
+      cardType: card.cardType,
+      status: card.status,
+      sortBy: card.sortBy,
+      sortOrder: card.sortOrder,
+      x: card.x,
+      y: card.y,
+      w: card.w,
+      h: card.h,
+      pluginType: card.pluginType,
+      pluginConfigJson: card.pluginConfigJson,
+      tags: card.tags ?? [],
+      createdAt: card.createdAt,
+      updatedAt: card.updatedAt,
       owner: card.user
         ? {
             id: card.user.id,
@@ -464,6 +508,16 @@ export class CardsService {
       return viewport as LayoutViewport;
     }
     return DEFAULT_LAYOUT_VIEWPORT;
+  }
+
+  private resolveCardStatus(status?: string): CardStatus {
+    if (!status) {
+      return 'active';
+    }
+    if (VALID_CARD_STATUSES.has(status as CardStatus)) {
+      return status as CardStatus;
+    }
+    throw new BadRequestException('invalid card status');
   }
 
   private parseLayoutsJson(raw: string | null | undefined): LayoutByViewport {

@@ -8,10 +8,10 @@
 
 .settings-topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 32px 32px 20px;
+  padding: 18px 32px 12px;
 }
 
 .settings-topbar-kicker {
@@ -472,6 +472,96 @@
   color: var(--txt2);
 }
 
+.settings-organization-create,
+.settings-organization-card,
+.settings-organization-empty-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.settings-organization-create {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.settings-organization-create-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.settings-organization-create-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--txt2);
+}
+
+.settings-organization-create-form,
+.settings-organization-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.settings-organization-list {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-organization-card {
+  padding: 18px;
+}
+
+.settings-organization-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-organization-card-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.settings-organization-card-head p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--txt3);
+}
+
+.settings-organization-member-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.settings-organization-member-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: 13px;
+  color: var(--txt2);
+}
+
+.settings-organization-empty,
+.settings-organization-empty-card {
+  font-size: 13px;
+  color: var(--txt3);
+}
+
+.settings-organization-empty-card {
+  padding: 18px;
+}
+
 @media (max-width: 960px) {
   .settings-shell {
     grid-template-columns: 1fr;
@@ -511,5 +601,10 @@
 
   .settings-panel-header {
     flex-direction: column;
+  }
+
+  .settings-organization-create-form,
+  .settings-organization-add-form {
+    grid-template-columns: 1fr;
   }
 }

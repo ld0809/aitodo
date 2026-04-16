@@ -36,7 +36,13 @@ export interface UpdateLayoutDto {
 }
 
 export const cardsApi = {
-  getAll: (viewport: LayoutViewport) => apiClient.get<Card[]>(`/cards?viewport=${viewport}`),
+  getAll: (viewport: LayoutViewport, status?: 'active' | 'archived') => {
+    const searchParams = new URLSearchParams({ viewport });
+    if (status) {
+      searchParams.set('status', status);
+    }
+    return apiClient.get<Card[]>(`/cards?${searchParams.toString()}`);
+  },
 
   getById: (id: string, viewport: LayoutViewport) => apiClient.get<Card>(`/cards/${id}?viewport=${viewport}`),
 
@@ -44,6 +50,8 @@ export const cardsApi = {
 
   update: (id: string, data: UpdateCardDto) =>
     apiClient.patch<Card>(`/cards/${id}`, data),
+
+  archive: (id: string) => apiClient.patch<Card>(`/cards/${id}/archive`),
 
   delete: (id: string) => apiClient.delete(`/cards/${id}`),
 

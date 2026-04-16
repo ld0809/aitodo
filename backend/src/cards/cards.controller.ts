@@ -16,8 +16,9 @@ export class CardsController {
   findAll(
     @CurrentUser() user: { userId: string },
     @Query('viewport') viewport?: 'mobile' | 'tablet' | 'desktop_normal' | 'desktop_big',
+    @Query('status') status?: 'active' | 'archived',
   ) {
-    return this.cardsService.findAll(user.userId, viewport);
+    return this.cardsService.findAll(user.userId, viewport, status);
   }
 
   @Post('cards')
@@ -42,6 +43,11 @@ export class CardsController {
   @Delete('cards/:id')
   remove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.cardsService.remove(user.userId, id);
+  }
+
+  @Patch('cards/:id/archive')
+  archive(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.cardsService.archive(user.userId, id);
   }
 
   @Patch('cards/:id/layout')

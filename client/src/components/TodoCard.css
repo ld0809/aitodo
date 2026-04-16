@@ -21,6 +21,15 @@
   opacity: 0.7;
 }
 
+.todo-item.readonly {
+  cursor: default;
+}
+
+.todo-item.readonly:hover {
+  border-color: transparent;
+  transform: none;
+}
+
 .todo-row {
   display: flex;
   gap: 8px;

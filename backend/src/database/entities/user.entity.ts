@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, ManyToMany, OneToMany, OneToOne, Prim
 import { Card } from './card.entity';
 import { EmailCode } from './email-code.entity';
 import { MiniappBinding } from './miniapp-binding.entity';
+import { Organization } from './organization.entity';
 import { OpenClawBinding } from './openclaw-binding.entity';
 import { Tag } from './tag.entity';
 import { TodoCalendarSyncRecord } from './todo-calendar-sync.entity';
@@ -60,6 +61,12 @@ export class User {
 
   @ManyToMany(() => Todo, (todo) => todo.assignees)
   assignedTodos!: Todo[];
+
+  @OneToMany(() => Organization, (organization) => organization.owner)
+  ownedOrganizations!: Organization[];
+
+  @ManyToMany(() => Organization, (organization) => organization.members)
+  organizations!: Organization[];
 
   @OneToMany(() => TodoCalendarSyncRecord, (record) => record.user)
   todoCalendarSyncRecords!: TodoCalendarSyncRecord[];

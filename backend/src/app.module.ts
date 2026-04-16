@@ -14,6 +14,7 @@ import { APP_ENTITIES } from './database/entity-list';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
 import { MiniappModule } from './miniapp/miniapp.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { OpenClawModule } from './openclaw/openclaw.module';
 
 function resolveDatabasePath() {
@@ -58,6 +59,7 @@ function resolveTypeormSynchronize() {
     ReportsModule,
     HealthModule,
     MiniappModule,
+    OrganizationsModule,
     OpenClawModule,
   ],
 })

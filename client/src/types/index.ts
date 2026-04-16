@@ -44,6 +44,22 @@ export interface CardParticipant {
   mentionKey: string;
 }
 
+export interface OrganizationMember {
+  id: string;
+  email: string;
+  nickname?: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  ownerId: string;
+  owner?: OrganizationMember;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Tag {
   id: string;
   userId: string;
@@ -88,6 +104,7 @@ export interface Card {
   owner?: CardParticipant;
   name: string;
   cardType: 'personal' | 'shared';
+  status: 'active' | 'archived';
   sortBy: 'due_at' | 'created_at' | 'execute_at';
   sortOrder: 'asc' | 'desc';
   x: number;

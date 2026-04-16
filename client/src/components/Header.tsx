@@ -10,7 +10,9 @@ interface HeaderProps {
   onNewCard: () => void;
   onOpenAiReport: () => void;
   onOpenTags: () => void;
+  onOpenArchivedCards: () => void;
   onOpenProfileSettings: () => void;
+  onOpenOrganizationSettings: () => void;
   onOpenGoalSettings: () => void;
 }
 
@@ -22,7 +24,9 @@ export function Header({
   onNewCard,
   onOpenAiReport,
   onOpenTags,
+  onOpenArchivedCards,
   onOpenProfileSettings,
+  onOpenOrganizationSettings,
   onOpenGoalSettings,
 }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -66,10 +70,12 @@ export function Header({
           </span>
         </div>
       </div>
-      <div className="header-right hover-reveal">
-        <button className="btn-sm btn-sm-secondary" onClick={onNewTodo}>+ 待办</button>
-        <button className="btn-sm btn-sm-secondary" onClick={onNewCard}>+ 卡片</button>
-        <button className="btn-sm btn-sm-secondary" onClick={onOpenAiReport}>AI报告</button>
+      <div className="header-right">
+        <div className="header-actions hover-reveal">
+          <button className="btn-sm btn-sm-secondary" onClick={onNewTodo}>+ 待办</button>
+          <button className="btn-sm btn-sm-secondary" onClick={onNewCard}>+ 卡片</button>
+          <button className="btn-sm btn-sm-secondary" onClick={onOpenAiReport}>AI报告</button>
+        </div>
         <div className="user-dropdown" ref={menuRef}>
           <div
             className="avatar"
@@ -90,12 +96,28 @@ export function Header({
               <div
                 onClick={() => {
                   setShowUserMenu(false);
+                  onOpenOrganizationSettings();
+                }}
+              >
+                🏢 组织管理
+              </div>
+              <div
+                onClick={() => {
+                  setShowUserMenu(false);
                   onOpenGoalSettings();
                 }}
               >
                 🎯 目标设置
               </div>
               <div onClick={() => { setShowUserMenu(false); onOpenTags(); }}>🏷️ 标签管理</div>
+              <div
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onOpenArchivedCards();
+                }}
+              >
+                🗄️ 我的归档
+              </div>
               <div className="danger" onClick={() => { setShowUserMenu(false); onLogout(); }}>
                 🚪 退出登录
               </div>

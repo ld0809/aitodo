@@ -1,9 +1,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
-import type { Card, Tag } from '../types';
+import type { Card, Organization, OrganizationMember, Tag } from '../types';
 import type { CreateCardDto, UpdateCardDto } from '../api/cards';
+import { organizationsApi } from '../api/organizations';
 import { getUsers, type TapdUser } from '../api/tapd';
 import { useAuthStore } from '../store/authStore';
+import { Button } from './ui/Button';
 import './Modal.css';
 
 interface CardModalProps {
@@ -39,6 +41,13 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
   const [participantEmails, setParticipantEmails] = useState<string[]>([]);
   const [participantEmailDraft, setParticipantEmailDraft] = useState('');
   const [copyFromCardId, setCopyFromCardId] = useState('');
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationMembersById, setOrganizationMembersById] = useState<Record<string, OrganizationMember[]>>({});
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationMembersLoading, setOrganizationMembersLoading] = useState(false);
+  const [showOrganizationMemberPicker, setShowOrganizationMemberPicker] = useState(false);
+  const [pendingOrganizationMemberIds, setPendingOrganizationMemberIds] = useState<string[]>([]);
 
   const [workspaceInput, setWorkspaceInput] = useState('');
   const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
@@ -70,6 +79,9 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
         [...new Set((Array.isArray(card.participants) ? card.participants : []).map((participant) => normalizeEmail(participant.email)))]
       );
       setCopyFromCardId('');
+      setSelectedOrganizationId('');
+      setShowOrganizationMemberPicker(false);
+      setPendingOrganizationMemberIds([]);
 
       if (card.pluginType === 'tapd' && card.pluginConfigJson) {
         try {
@@ -115,6 +127,11 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
     setParticipantEmails([]);
     setParticipantEmailDraft('');
     setCopyFromCardId('');
+    setOrganizations([]);
+    setOrganizationMembersById({});
+    setSelectedOrganizationId('');
+    setShowOrganizationMemberPicker(false);
+    setPendingOrganizationMemberIds([]);
     setWorkspaceInput('');
     setContentType('all');
     setIterationId('');
@@ -123,6 +140,85 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
     setTapdUsers([]);
     setUserKeyword('');
   }, [card]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isSharedCard) {
+      setOrganizations([]);
+      setOrganizationMembersById({});
+      setSelectedOrganizationId('');
+      setShowOrganizationMemberPicker(false);
+      setPendingOrganizationMemberIds([]);
+      setOrganizationsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setOrganizationsLoading(true);
+    organizationsApi.getAll()
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setOrganizations(Array.isArray(response.data) ? response.data : []);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setOrganizations([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setOrganizationsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSharedCard]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isSharedCard || !selectedOrganizationId) {
+      setOrganizationMembersLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setOrganizationMembersLoading(true);
+    organizationsApi.getMembers(selectedOrganizationId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setOrganizationMembersById((prev) => ({
+          ...prev,
+          [selectedOrganizationId]: Array.isArray(response.data) ? response.data : [],
+        }));
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setOrganizationMembersById((prev) => ({
+          ...prev,
+          [selectedOrganizationId]: [],
+        }));
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setOrganizationMembersLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSharedCard, selectedOrganizationId]);
 
   useEffect(() => {
     if (!isTapdCard) {
@@ -192,6 +288,10 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
       ),
     [cards, card?.id, currentUser?.id],
   );
+  const selectedOrganizationMembers = selectedOrganizationId ? (organizationMembersById[selectedOrganizationId] ?? []) : [];
+  const selectedOrganization = organizations.find((organization) => organization.id === selectedOrganizationId) ?? null;
+  const pendingMemberCount = pendingOrganizationMemberIds.length;
+  const allOrganizationMembersSelected = selectedOrganizationMembers.length > 0 && pendingMemberCount === selectedOrganizationMembers.length;
 
   const toggleOwner = (id: string) => {
     setOwnerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -230,6 +330,48 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
     }
     const copiedEmails = [...new Set((Array.isArray(sourceCard.participants) ? sourceCard.participants : []).map((item) => normalizeEmail(item.email)))];
     setParticipantEmails(copiedEmails);
+  };
+
+  const openOrganizationMemberPicker = () => {
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setPendingOrganizationMemberIds(
+      selectedOrganizationMembers
+        .filter((member) => participantEmails.includes(normalizeEmail(member.email)))
+        .map((member) => member.id),
+    );
+    setShowOrganizationMemberPicker(true);
+  };
+
+  const toggleOrganizationMember = (memberId: string) => {
+    setPendingOrganizationMemberIds((prev) => (
+      prev.includes(memberId)
+        ? prev.filter((item) => item !== memberId)
+        : [...prev, memberId]
+    ));
+  };
+
+  const confirmOrganizationParticipants = () => {
+    if (!selectedOrganizationId || pendingOrganizationMemberIds.length === 0) {
+      setShowOrganizationMemberPicker(false);
+      return;
+    }
+
+    const nextEmails = selectedOrganizationMembers
+      .filter((member) => pendingOrganizationMemberIds.includes(member.id))
+      .map((member) => normalizeEmail(member.email));
+    setParticipantEmails((prev) => [...new Set([...prev, ...nextEmails])]);
+    setShowOrganizationMemberPicker(false);
+  };
+
+  const selectAllOrganizationMembers = () => {
+    setPendingOrganizationMemberIds(selectedOrganizationMembers.map((member) => member.id));
+  };
+
+  const clearPendingOrganizationMembers = () => {
+    setPendingOrganizationMemberIds([]);
   };
 
   const handleCreateTag = async () => {
@@ -341,6 +483,29 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
                     ))}
                     {participantEmails.length === 0 && <div className="owner-empty">暂无参与人员</div>}
                   </div>
+                </div>
+
+                <div className="mb">
+                  <label>选择组织</label>
+                  <div className="participant-copy-row">
+                    <select value={selectedOrganizationId} onChange={(e) => setSelectedOrganizationId(e.target.value)}>
+                      <option value="">{organizationsLoading ? '组织加载中...' : '选择组织'}</option>
+                      {organizations.map((organization) => (
+                        <option key={organization.id} value={organization.id}>
+                          {organization.name}（{organization.memberCount}人）
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="owner-action-btn"
+                      onClick={openOrganizationMemberPicker}
+                      disabled={!selectedOrganizationId}
+                    >
+                      从组织添加
+                    </button>
+                  </div>
+                  <div className="mention-hint">点击后会弹框展示该组织成员，支持多选后一次性添加。</div>
                 </div>
 
                 <div className="mb">
@@ -478,14 +643,110 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={onClose} disabled={isSaving}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
               取消
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={isSaving}>
+            </Button>
+            <Button type="submit" variant="primary" disabled={isSaving}>
               {isSaving ? '提交中...' : card ? '保存' : '创建'}
-            </button>
+            </Button>
           </div>
         </form>
+
+        {showOrganizationMemberPicker && (
+          <div className="nested-modal-overlay" onClick={() => setShowOrganizationMemberPicker(false)}>
+            <div className="nested-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="nested-modal-header">
+                <div>
+                  <div className="nested-modal-title">从组织添加成员</div>
+                  <div className="nested-modal-subtitle">
+                    {selectedOrganization ? `${selectedOrganization.name} 的组织成员` : '选择要加入共享卡片的组织成员'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setShowOrganizationMemberPicker(false)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="nested-modal-body">
+                {organizationMembersLoading ? (
+                  <div className="owner-empty">成员加载中...</div>
+                ) : selectedOrganizationMembers.length === 0 ? (
+                  <div className="owner-empty">当前组织还没有可选成员</div>
+                ) : (
+                  <>
+                    <div className="nested-modal-toolbar">
+                      <div className="nested-modal-toolbar-meta">
+                        <span className="selection-badge">已选 {pendingMemberCount}</span>
+                        <span className="selection-muted">共 {selectedOrganizationMembers.length} 位成员</span>
+                      </div>
+                      <div className="nested-modal-toolbar-actions">
+                        <button
+                          type="button"
+                          className="owner-action-btn"
+                          onClick={allOrganizationMembersSelected ? clearPendingOrganizationMembers : selectAllOrganizationMembers}
+                        >
+                          {allOrganizationMembersSelected ? '取消全选' : '全选'}
+                        </button>
+                        <button type="button" className="owner-action-btn" onClick={clearPendingOrganizationMembers} disabled={pendingMemberCount === 0}>
+                          清空
+                        </button>
+                      </div>
+                    </div>
+                    <div className="organization-member-list">
+                    {selectedOrganizationMembers.map((member) => {
+                      const checked = pendingOrganizationMemberIds.includes(member.id);
+                      const normalizedEmail = normalizeEmail(member.email);
+                      const inParticipantList = participantEmails.includes(normalizedEmail);
+                      const displayName = member.nickname?.trim() || member.email;
+                      const displayInitial = displayName.slice(0, 1).toUpperCase();
+                      return (
+                        <label
+                          key={member.id}
+                          className={`organization-member-option${checked ? ' selected' : ''}${inParticipantList ? ' exists' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleOrganizationMember(member.id)}
+                          />
+                          <span className="organization-member-avatar" aria-hidden="true">{displayInitial}</span>
+                          <div className="organization-member-copy">
+                            <div className="organization-member-topline">
+                              <strong>{displayName}</strong>
+                              {inParticipantList && <span className="organization-member-state">已在参与人</span>}
+                            </div>
+                            <span className="organization-member-email">{member.email}</span>
+                          </div>
+                          <span className={`organization-member-check${checked ? ' selected' : ''}`} aria-hidden="true">
+                            ✓
+                          </span>
+                        </label>
+                      );
+                    })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="nested-modal-actions">
+                <Button variant="secondary" onClick={() => setShowOrganizationMemberPicker(false)}>
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={confirmOrganizationParticipants}
+                  disabled={organizationMembersLoading || pendingOrganizationMemberIds.length === 0}
+                >
+                  确认添加
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

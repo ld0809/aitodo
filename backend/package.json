@@ -8,6 +8,7 @@
     "start:dev": "ts-node src/main.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
+    "test:unit": "jest --config ./jest-unit.json --runInBand",
     "test:e2e": "jest --config ./jest-e2e.json --runInBand",
     "backup:db": "bash ./scripts/backup-db.sh",
     "restore:db": "bash ./scripts/restore-db.sh",
