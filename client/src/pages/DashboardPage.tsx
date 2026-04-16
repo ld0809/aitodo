@@ -4,13 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout, { noCompactor } from 'react-grid-layout';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
-import { openClawApi } from '../api/openclaw';
 import { todosApi, type CreateTodoDto, type UpdateTodoDto } from '../api/todos';
 import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { reportsApi, type AiReportResult } from '../api/reports';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
 import { usersApi } from '../api/users';
-import type { Todo, Card, LayoutViewport, OpenClawBinding, TodoProgressEntry } from '../types';
+import type { Todo, Card, LayoutViewport, TodoProgressEntry } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
@@ -145,15 +144,9 @@ export function DashboardPage() {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showAiReportModal, setShowAiReportModal] = useState(false);
-  const [nicknameDraft, setNicknameDraft] = useState('');
-  const [openClawDeviceLabel, setOpenClawDeviceLabel] = useState('');
-  const [openClawTimeoutSeconds, setOpenClawTimeoutSeconds] = useState('900');
-  const [openClawEnabled, setOpenClawEnabled] = useState(true);
-  const [openClawFormDirty, setOpenClawFormDirty] = useState(false);
   const [goalDraft, setGoalDraft] = useState('');
   const [progressDraft, setProgressDraft] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
@@ -194,32 +187,6 @@ export function DashboardPage() {
       }
     }
     return fallback;
-  };
-
-  const copyText = async (text: string, successMessage: string) => {
-    try {
-      if (navigator.clipboard?.writeText && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', 'true');
-        textarea.style.position = 'fixed';
-        textarea.style.top = '-9999px';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        const copied = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        if (!copied) {
-          throw new Error('copy command failed');
-        }
-      }
-      alert(successMessage);
-    } catch {
-      alert('复制失败，请手动复制。');
-    }
   };
 
   useEffect(() => {
@@ -314,12 +281,6 @@ export function DashboardPage() {
     queryFn: () => usersApi.getMe().then((res) => res.data),
   });
 
-  const { data: openClawBinding } = useQuery({
-    queryKey: ['openclaw-me', userScope],
-    enabled: !!user,
-    queryFn: () => openClawApi.getMe().then((res) => res.data),
-  });
-
   const { data: todoProgressEntries = [] } = useQuery({
     queryKey: ['todo-progress', userScope, activeProgressTodo?.id],
     enabled: !!activeProgressTodo?.id && showProgressModal,
@@ -331,25 +292,6 @@ export function DashboardPage() {
       updateUser(meProfile);
     }
   }, [meProfile, updateUser]);
-
-  useEffect(() => {
-    if (!showProfileModal) {
-      return;
-    }
-    if (openClawFormDirty) {
-      return;
-    }
-    handleHydrateOpenClawForm(openClawBinding);
-  }, [
-    showProfileModal,
-    openClawFormDirty,
-    openClawBinding?.connectToken,
-    openClawBinding?.deviceLabel,
-    openClawBinding?.timeoutSeconds,
-    openClawBinding?.enabled,
-    openClawBinding?.connectionStatus,
-    openClawBinding?.suggestedDeviceLabel,
-  ]);
 
   const createTodoMutation = useMutation({
     mutationFn: (data: CreateTodoDto) => todosApi.create(data),
@@ -474,32 +416,6 @@ export function DashboardPage() {
     onSuccess: (res) => {
       updateUser(res.data);
       queryClient.invalidateQueries({ queryKey: ['me', userScope] });
-    },
-  });
-
-  const updateOpenClawMutation = useMutation({
-    mutationFn: (data: {
-      deviceLabel?: string;
-      enabled?: boolean;
-      timeoutSeconds?: number;
-      rotateToken?: boolean;
-    }) => openClawApi.updateMe(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['openclaw-me', userScope] });
-    },
-  });
-
-  const provisionOpenClawMutation = useMutation({
-    mutationFn: () => openClawApi.provisionMe(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['openclaw-me', userScope] });
-    },
-  });
-
-  const deleteOpenClawMutation = useMutation({
-    mutationFn: () => openClawApi.deleteMe(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['openclaw-me', userScope] });
     },
   });
 
@@ -759,103 +675,6 @@ export function DashboardPage() {
     });
   };
 
-  const handleHydrateOpenClawForm = (binding?: OpenClawBinding | null) => {
-    setOpenClawDeviceLabel(binding?.deviceLabel ?? binding?.suggestedDeviceLabel ?? '');
-    setOpenClawTimeoutSeconds(String(binding?.timeoutSeconds ?? 900));
-    setOpenClawEnabled(binding?.connectToken ? binding.enabled : false);
-    setOpenClawFormDirty(false);
-  };
-
-  const handleSaveProfile = async () => {
-    const nextNickname = nicknameDraft.trim().slice(0, 100);
-    const trimmedDeviceLabel = openClawDeviceLabel.trim();
-    const parsedTimeoutSeconds = Number.parseInt(openClawTimeoutSeconds, 10);
-    const timeoutSeconds = Number.isFinite(parsedTimeoutSeconds)
-      ? Math.min(3600, Math.max(30, parsedTimeoutSeconds))
-      : 900;
-
-    try {
-      await updateProfileMutation.mutateAsync({ nickname: nextNickname });
-
-      const shouldSaveOpenClaw = !!openClawBinding?.connectToken;
-      if (shouldSaveOpenClaw) {
-        await updateOpenClawMutation.mutateAsync({
-          deviceLabel: trimmedDeviceLabel || undefined,
-          enabled: openClawEnabled,
-          timeoutSeconds,
-        });
-      }
-
-      setOpenClawFormDirty(false);
-      setShowProfileModal(false);
-    } catch (error) {
-      alert(getErrorMessage(error, '保存个人信息失败'));
-    }
-  };
-
-  const handleProvisionOpenClaw = async () => {
-    try {
-      await provisionOpenClawMutation.mutateAsync();
-      alert('已生成连接信息，请继续执行下一步。');
-    } catch (error) {
-      alert(getErrorMessage(error, '生成连接信息失败'));
-    }
-  };
-
-  const handleRotateOpenClawToken = async () => {
-    if (!openClawBinding?.connectToken) {
-      return;
-    }
-    if (!confirm('重置连接令牌后，当前本地连接会断开，需要重新使用新令牌连接。是否继续？')) {
-      return;
-    }
-    try {
-      await updateOpenClawMutation.mutateAsync({
-        rotateToken: true,
-      });
-      alert('连接令牌已重置，请更新本地配置后重新连接。');
-    } catch (error) {
-      alert(getErrorMessage(error, '重置连接令牌失败'));
-    }
-  };
-
-  const handleDeleteOpenClaw = async () => {
-    if (!openClawBinding?.connectToken) {
-      return;
-    }
-    if (!confirm('确定解除当前 OpenClaw 绑定吗？')) {
-      return;
-    }
-    try {
-      await deleteOpenClawMutation.mutateAsync();
-      handleHydrateOpenClawForm(null);
-    } catch (error) {
-      alert(getErrorMessage(error, '解除 OpenClaw 绑定失败'));
-    }
-  };
-
-  const openClawPluginInstallCommand = openClawBinding?.pluginInstallCommand ?? null;
-  const openClawPluginEnableCommand = openClawBinding?.pluginEnableCommand ?? null;
-  const openClawPluginConfigSnippet = openClawBinding?.pluginConfigSnippet ?? null;
-  const openClawPluginPackageName = openClawBinding?.pluginPackageName?.trim() || 'openclaw-channel-aitodo';
-  const openClawTokenReady = !!openClawBinding?.connectToken;
-  const openClawConnectionReady = openClawBinding?.connected ?? false;
-  const openClawRuntimeReady = openClawDeviceLabel.trim().length > 0;
-  const openClawAutoDispatchReady = openClawEnabled;
-  const openClawMutating =
-    updateProfileMutation.isPending ||
-    provisionOpenClawMutation.isPending ||
-    updateOpenClawMutation.isPending ||
-    deleteOpenClawMutation.isPending;
-  const openClawConnectionStatusLabel = (() => {
-    const status = openClawBinding?.connectionStatus;
-    if (status === 'connected') return '已连接';
-    if (status === 'disconnected') return '连接已断开';
-    if (status === 'revoked') return '已撤销';
-    if (status === 'pending') return '待连接';
-    return '未配置';
-  })();
-
   const applyResolvedLayout = (
     layout: readonly GridLayoutItem[],
     options?: { compactUp?: boolean; pinItemId?: string; frozenItemIds?: readonly string[] },
@@ -1061,11 +880,7 @@ export function DashboardPage() {
         onNewCard={() => handleOpenCardModal()}
         onOpenAiReport={handleOpenAiReportModal}
         onOpenTags={() => setShowTagModal(true)}
-        onOpenProfileSettings={() => {
-          setNicknameDraft(user?.nickname?.trim() || '');
-          handleHydrateOpenClawForm(openClawBinding);
-          setShowProfileModal(true);
-        }}
+        onOpenProfileSettings={() => navigate('/settings/profile')}
         onOpenGoalSettings={() => {
           setGoalDraft(user?.target || '');
           setShowGoalModal(true);
@@ -1398,306 +1213,6 @@ export function DashboardPage() {
           onDelete={handleDeleteTag}
           onClose={() => setShowTagModal(false)}
         />
-      )}
-
-      {showProfileModal && (
-        <div className="overlay open" onClick={() => setShowProfileModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">个人信息</div>
-              <button className="modal-close" onClick={() => setShowProfileModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <label className="goal-label" htmlFor="nickname-input">昵称（最多 100 字）</label>
-              <input
-                id="nickname-input"
-                className="goal-input"
-                maxLength={100}
-                placeholder="用于共享卡片 @ 提及展示"
-                value={nicknameDraft}
-                onChange={(e) => setNicknameDraft(e.target.value)}
-              />
-              <div className="goal-meta">
-                <span>留空后保存将恢复为邮箱前缀显示</span>
-                <span>{nicknameDraft.length}/100</span>
-              </div>
-
-              <section className="openclaw-guide">
-                <div className="openclaw-guide-header">
-                  <div>
-                    <div className="goal-label">OpenClaw 绑定向导</div>
-                    <div className="openclaw-guide-intro">
-                      不需要公网 IP。让你本地 OpenClaw 主动连 AITodo 后端即可，按下面 4 步完成配置。
-                    </div>
-                  </div>
-                  <div className={`openclaw-status-badge ${openClawConnectionReady ? 'ready' : 'pending'}`}>
-                    {openClawConnectionStatusLabel}
-                  </div>
-                </div>
-
-                <div className="openclaw-step-list">
-                  <section className="openclaw-step-card">
-                    <div className="openclaw-step-head">
-                      <span className={`openclaw-step-index ${openClawTokenReady ? 'done' : ''}`}>1</span>
-                      <div>
-                        <div className="openclaw-step-title">生成连接信息</div>
-                        <div className="openclaw-step-desc">
-                          先在 AITodo 内生成一次性连接令牌，后续本地通过该令牌建立长连接。
-                        </div>
-                      </div>
-                    </div>
-                    <div className="openclaw-step-body">
-                      <div className="openclaw-inline-meta">
-                        <span>Channel：{openClawBinding?.channelCode || 'aitodo'}</span>
-                        <span>WS 地址：{openClawBinding?.wsUrl || '当前服务端未配置'}</span>
-                        {openClawBinding?.docsUrl && (
-                          <a href={openClawBinding.docsUrl} target="_blank" rel="noreferrer">查看文档</a>
-                        )}
-                      </div>
-
-                      {openClawTokenReady ? (
-                        <>
-                          <div className="openclaw-command-block">
-                            <code>{openClawBinding?.connectToken}</code>
-                          </div>
-                          <div className="openclaw-inline-meta">
-                            <button
-                              type="button"
-                              className="btn btn-outline"
-                              onClick={() => void copyText(openClawBinding?.connectToken ?? '', '已复制连接令牌')}
-                            >
-                              复制连接令牌
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-outline"
-                              onClick={handleRotateOpenClawToken}
-                              disabled={openClawMutating}
-                            >
-                              重置令牌
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="openclaw-step-hint">
-                            先点击“生成连接信息”，系统会为你创建专属连接令牌。
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            onClick={handleProvisionOpenClaw}
-                            disabled={openClawMutating}
-                          >
-                            {provisionOpenClawMutation.isPending ? '生成中...' : '生成连接信息'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="openclaw-step-card">
-                    <div className="openclaw-step-head">
-                      <span className={`openclaw-step-index ${openClawConnectionReady ? 'done' : ''}`}>2</span>
-                      <div>
-                        <div className="openclaw-step-title">安装 `aitodo` 插件</div>
-                        <div className="openclaw-step-desc">
-                          在本地 OpenClaw Gateway 安装插件包 <code>{openClawPluginPackageName}</code>。
-                        </div>
-                      </div>
-                    </div>
-                    <div className="openclaw-step-body">
-                      <div className="openclaw-inline-meta">
-                        <span>插件包：{openClawPluginPackageName}</span>
-                      </div>
-
-                      {openClawPluginInstallCommand ? (
-                        <>
-                          <div className="openclaw-command-block">
-                            <code>{openClawPluginInstallCommand}</code>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            onClick={() => void copyText(openClawPluginInstallCommand, '已复制插件安装命令')}
-                          >
-                            复制插件安装命令
-                          </button>
-                        </>
-                      ) : (
-                        <div className="openclaw-step-hint">
-                          当前服务端未生成插件安装命令，请检查后端 `OPENCLAW_PLUGIN_INSTALL_COMMAND_TEMPLATE` 配置。
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="openclaw-step-card">
-                    <div className="openclaw-step-head">
-                      <span className={`openclaw-step-index ${openClawRuntimeReady && openClawConnectionReady ? 'done' : ''}`}>3</span>
-                      <div>
-                        <div className="openclaw-step-title">启用插件并确认连接</div>
-                        <div className="openclaw-step-desc">
-                          执行启用命令后，插件会用第 1 步的 token 建立长连接；连接成功后状态会变成“已连接”。
-                        </div>
-                      </div>
-                    </div>
-                    <div className="openclaw-step-body">
-                      {openClawPluginEnableCommand ? (
-                        <>
-                          <div className="openclaw-command-block">
-                            <code>{openClawPluginEnableCommand}</code>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            onClick={() => void copyText(openClawPluginEnableCommand, '已复制插件启用命令')}
-                          >
-                            复制插件启用命令
-                          </button>
-                        </>
-                      ) : (
-                        <div className="openclaw-step-hint">
-                          先完成第 1 步生成 token，系统才能生成插件启用命令。
-                        </div>
-                      )}
-
-                      {openClawPluginConfigSnippet && (
-                        <>
-                          <div className="openclaw-command-block">
-                            <code>{openClawPluginConfigSnippet}</code>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            onClick={() => void copyText(openClawPluginConfigSnippet, '已复制插件配置片段')}
-                          >
-                            复制插件配置片段
-                          </button>
-                        </>
-                      )}
-
-                      <div className="openclaw-inline-meta">
-                        <span>当前状态：{openClawConnectionStatusLabel}</span>
-                        <span>最近在线：{openClawBinding?.lastSeenAt ? new Date(openClawBinding.lastSeenAt).toLocaleString('zh-CN') : '暂无'}</span>
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => queryClient.invalidateQueries({ queryKey: ['openclaw-me', userScope] })}
-                          disabled={openClawMutating}
-                        >
-                          刷新状态
-                        </button>
-                      </div>
-
-                      <label className="goal-label" htmlFor="openclaw-device-label">设备名称</label>
-                      <input
-                        id="openclaw-device-label"
-                        className="goal-input openclaw-compact-input"
-                        maxLength={100}
-                        placeholder={openClawBinding?.suggestedDeviceLabel || '例如：aitodo-macbook-pro'}
-                        value={openClawDeviceLabel}
-                        onChange={(e) => {
-                          setOpenClawFormDirty(true);
-                          setOpenClawDeviceLabel(e.target.value);
-                        }}
-                      />
-                      <div className="goal-meta">
-                        <span>用于标识当前本地连接设备。</span>
-                        <span>{openClawDeviceLabel.length}/100</span>
-                      </div>
-
-                      <label className="goal-label" htmlFor="openclaw-timeout-seconds">任务等待时间（秒）</label>
-                      <input
-                        id="openclaw-timeout-seconds"
-                        className="goal-input openclaw-compact-input"
-                        type="number"
-                        min={30}
-                        max={3600}
-                        value={openClawTimeoutSeconds}
-                        onChange={(e) => {
-                          setOpenClawFormDirty(true);
-                          setOpenClawTimeoutSeconds(e.target.value);
-                        }}
-                      />
-                    </div>
-                  </section>
-
-                  <section className="openclaw-step-card">
-                    <div className="openclaw-step-head">
-                      <span className={`openclaw-step-index ${openClawAutoDispatchReady ? 'done' : ''}`}>4</span>
-                      <div>
-                        <div className="openclaw-step-title">打开自动分发</div>
-                        <div className="openclaw-step-desc">
-                          打开后，共享卡片里 @ 到你的待办会自动发给本地 OpenClaw 做方案设计。
-                        </div>
-                      </div>
-                    </div>
-                    <div className="openclaw-step-body">
-                      <label className="openclaw-toggle-row" htmlFor="openclaw-enabled-toggle">
-                        <span className="openclaw-toggle-label">启用自动分发</span>
-                        <input
-                          className="openclaw-toggle-input"
-                          id="openclaw-enabled-toggle"
-                          type="checkbox"
-                          checked={openClawEnabled}
-                          onChange={(e) => {
-                            setOpenClawFormDirty(true);
-                            setOpenClawEnabled(e.target.checked);
-                          }}
-                        />
-                        <span className="openclaw-toggle-switch" aria-hidden="true">
-                          <span className="openclaw-toggle-knob" />
-                        </span>
-                      </label>
-
-                      {openClawTokenReady && (
-                        <div className="openclaw-runtime-card">
-                          <div>Channel：{openClawBinding?.channelCode || 'aitodo'}</div>
-                          <div>Session 策略：{openClawBinding?.sessionStrategy === 'per_todo' ? '每条待办一个会话' : '未设置'}</div>
-                          <div>路由提示：{openClawBinding?.routingHint || '无'}</div>
-                          <div>当前设备：{openClawBinding?.deviceLabel || openClawDeviceLabel || '未设置'}</div>
-                          <div>最近在线：{openClawBinding?.lastSeenAt ? new Date(openClawBinding.lastSeenAt).toLocaleString('zh-CN') : '暂无'}</div>
-                          <div>最近分发：{openClawBinding?.lastDispatchedAt ? new Date(openClawBinding.lastDispatchedAt).toLocaleString('zh-CN') : '暂无'}</div>
-                          <div>最近完成：{openClawBinding?.lastCompletedAt ? new Date(openClawBinding.lastCompletedAt).toLocaleString('zh-CN') : '暂无'}</div>
-                          <div>最近错误：{openClawBinding?.lastError || '无'}</div>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              </section>
-            </div>
-            <div className="modal-footer">
-              {openClawBinding?.connectToken && (
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={handleDeleteOpenClaw}
-                  disabled={openClawMutating}
-                >
-                  {deleteOpenClawMutation.isPending ? '解绑中...' : '解除绑定'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setShowProfileModal(false)}
-                disabled={openClawMutating}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSaveProfile}
-                disabled={openClawMutating}
-              >
-                {openClawMutating ? '保存中...' : '保存'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {showGoalModal && (

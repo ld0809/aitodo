@@ -11,6 +11,7 @@ import { TapdConfigPage } from './pages/TapdConfigPage';
 import { RequirementQueryPage } from './pages/RequirementQueryPage';
 import { BugQueryPage } from './pages/BugQueryPage';
 import { TodoQueryPage } from './pages/TodoQueryPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -98,6 +99,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <TodoQueryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Navigate to="/settings/profile" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/:section"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
