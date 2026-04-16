@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { Todo } from '../database/entities/todo.entity';
+import { User } from '../database/entities/user.entity';
 import { DataSourcePlugin, PluginFetchContext } from './interfaces/data-source-plugin.interface';
 import { CardTodoView, PluginItem } from './types/plugin-item.type';
 
@@ -12,6 +13,8 @@ export class LocalTodoPlugin implements DataSourcePlugin {
   constructor(
     @InjectRepository(Todo)
     private readonly todoRepository: Repository<Todo>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async validateConfig(config: unknown) {
@@ -30,8 +33,13 @@ export class LocalTodoPlugin implements DataSourcePlugin {
 
       if (ctx.userId !== ctx.card.userId) {
         queryBuilder
-          .innerJoin('todo.assignees', 'assignee')
-          .andWhere('assignee.id = :userId', { userId: ctx.userId });
+          .leftJoin('todo.assignees', 'assignee')
+          .andWhere(
+            new Brackets((qb) => {
+              qb.where('todo.user_id = :userId', { userId: ctx.userId })
+                .orWhere('assignee.id = :userId', { userId: ctx.userId });
+            }),
+          );
       }
     } else {
       const tagIds = ctx.card.tags.map((tag) => tag.id);
@@ -53,21 +61,36 @@ export class LocalTodoPlugin implements DataSourcePlugin {
     queryBuilder.andWhere('todo.deleted_at IS NULL');
 
     const todos = await queryBuilder.getMany();
+    const creatorIds = [...new Set(todos.map((todo) => todo.userId).filter(Boolean))];
+    const creators = creatorIds.length
+      ? await this.userRepository.find({
+          where: {
+            id: In(creatorIds),
+          },
+        })
+      : [];
+    const creatorById = new Map(creators.map((user) => [user.id, user]));
 
-    return todos.map<PluginItem>((todo) => ({
-      id: todo.id,
-      content: todo.content,
-      dueAt: todo.dueAt,
-      executeAt: todo.executeAt,
-      status: todo.status,
-      createdAt: todo.createdAt,
-      updatedAt: todo.updatedAt,
-      tags: todo.tags.map((tag) => ({
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-      })),
-    }));
+    return todos.map<PluginItem>((todo) => {
+      const creator = creatorById.get(todo.userId);
+      return {
+        id: todo.id,
+        content: todo.content,
+        dueAt: todo.dueAt,
+        executeAt: todo.executeAt,
+        status: todo.status,
+        creatorUserId: todo.userId,
+        creatorName: creator?.nickname?.trim() || creator?.email || '',
+        creatorRole: todo.userId === ctx.card.userId ? 'owner' : 'participant',
+        createdAt: todo.createdAt,
+        updatedAt: todo.updatedAt,
+        tags: todo.tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+        })),
+      };
+    });
   }
 
   sortItems(items: PluginItem[], sortBy: string, sortOrder: 'asc' | 'desc') {
@@ -99,6 +122,9 @@ export class LocalTodoPlugin implements DataSourcePlugin {
       id: item.id,
       content: item.content,
       handlerNames: item.handlerNames,
+      creatorUserId: item.creatorUserId,
+      creatorName: item.creatorName,
+      creatorRole: item.creatorRole,
       dueAt: item.dueAt,
       executeAt: item.executeAt,
       status: item.status,

@@ -364,6 +364,7 @@ OPENCLAW_PLUGIN_INSTALL_COMMAND_TEMPLATE=openclaw plugins install {{pluginPackag
 
 ## 辅助信息
 ### 本地测试账号
+- lid@fxiaoke.com 密码：Daxiang0809
 - 邮箱：test1@fxiaoke.com 密码：My123456
 - 邮箱：test2@fxiaoke.com 密码：My123456
 - 邮箱：test4@fxiaoke.com 密码：My123456

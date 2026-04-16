@@ -30,7 +30,6 @@ export class TodosService {
   ) {}
 
   async create(userId: string, dto: CreateTodoDto) {
-    const tags = await this.getValidatedTags(userId, dto.tagIds);
     let card: Card | null = null;
     let assignees: User[] = [];
 
@@ -39,6 +38,7 @@ export class TodosService {
         where: { id: dto.cardId },
         relations: {
           participants: true,
+          tags: true,
         },
       });
 
@@ -46,7 +46,14 @@ export class TodosService {
         throw new NotFoundException('card not found');
       }
 
-      if (card.userId !== userId) {
+      const isSharedParticipant = card.cardType === 'shared'
+        && (card.userId === userId || (card.participants ?? []).some((participant) => participant.id === userId));
+
+      if (card.cardType === 'shared') {
+        if (!isSharedParticipant) {
+          throw new ForbiddenException('only shared card participants can create todo in this card');
+        }
+      } else if (card.userId !== userId) {
         throw new ForbiddenException('only card owner can create todo in this card');
       }
 
@@ -54,6 +61,10 @@ export class TodosService {
         assignees = this.resolveMentionedParticipants(dto.content, card.participants ?? []);
       }
     }
+
+    const tags = card?.cardType === 'shared'
+      ? [...(card.tags ?? [])]
+      : await this.getValidatedTags(userId, dto.tagIds);
 
     const todo = this.todoRepository.create({
       userId,
@@ -161,9 +172,6 @@ export class TodosService {
 
   async update(userId: string, id: string, dto: UpdateTodoDto) {
     const todo = await this.findAccessibleTodoOrThrow(userId, id);
-    if (todo.userId !== userId) {
-      throw new ForbiddenException('only todo owner can update todo');
-    }
 
     let dueAtChanged = false;
 
@@ -185,7 +193,7 @@ export class TodosService {
       todo.status = dto.status as 'todo' | 'done' | 'completed';
     }
     if (dto.tagIds !== undefined) {
-      todo.tags = await this.getValidatedTags(userId, dto.tagIds);
+      todo.tags = await this.resolveTodoTags(todo, userId, dto.tagIds);
     }
 
     await this.todoRepository.save(todo);
@@ -287,7 +295,7 @@ export class TodosService {
       .leftJoin('todo.assignees', 'accessAssignee')
       .where('todo.id = :id', { id })
       .andWhere('todo.deleted_at IS NULL')
-      .andWhere('(todo.user_id = :userId OR accessAssignee.id = :userId)', { userId })
+      .andWhere('(todo.user_id = :userId OR accessAssignee.id = :userId OR card.user_id = :userId)', { userId })
       .distinct(true)
       .getOne();
 
@@ -327,6 +335,38 @@ export class TodosService {
     }
 
     todo.assignees = this.resolveMentionedParticipants(todo.content, card.participants ?? []);
+  }
+
+  private async resolveTodoTags(todo: Pick<Todo, 'cardId'>, fallbackUserId: string, tagIds?: string[]) {
+    if (!todo.cardId) {
+      return this.getValidatedTags(fallbackUserId, tagIds);
+    }
+
+    const card = await this.cardRepository.findOne({
+      where: { id: todo.cardId },
+      relations: {
+        tags: true,
+      },
+      select: {
+        id: true,
+        userId: true,
+        cardType: true,
+        tags: {
+          id: true,
+          userId: true,
+          name: true,
+          color: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    });
+
+    if (!card || card.cardType !== 'shared') {
+      return this.getValidatedTags(fallbackUserId, tagIds);
+    }
+
+    return [...(card.tags ?? [])];
   }
 
   private extractMentionTokens(content: string) {

@@ -4,6 +4,7 @@ import './TodoCard.css';
 interface TodoCardProps {
   todo: Todo;
   tags: Tag[];
+  currentUserId?: string;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -15,6 +16,7 @@ interface TodoCardProps {
 
 export function TodoCard({
   todo,
+  currentUserId,
   onToggle,
   onEdit,
   showToggle = true,
@@ -68,6 +70,9 @@ export function TodoCard({
     ? todo.handlerNames.map((name) => String(name || '').trim()).filter(Boolean)
     : [];
   const handlerLabel = handlerNames.length > 0 ? `[${handlerNames.join(' ')}]` : null;
+  const creatorBadge = todo.creatorUserId && todo.creatorUserId !== currentUserId
+    ? `创建人：${todo.creatorName || '未知成员'}`
+    : null;
 
   return (
     <div className={`todo-item ${isDone ? 'done' : ''}`} onClick={() => {
@@ -110,6 +115,7 @@ export function TodoCard({
           <div className={`todo-text ${isDone ? 'done' : ''}`}>
             {todo.content}
           </div>
+          {creatorBadge && <div className="todo-creator-badge">{creatorBadge}</div>}
           {handlerLabel && <div className="todo-handler-list">{handlerLabel}</div>}
           <div className="todo-meta">
             {visibleTags.map((tag) => (

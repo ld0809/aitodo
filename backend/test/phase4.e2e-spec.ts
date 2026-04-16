@@ -18,6 +18,7 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   let sharedCardId = '';
   let hiddenSharedCardId = '';
   let sharedTodoId = '';
+  let ownerTagId = '';
   let memberMentionKey = '';
   let secondMemberMentionKey = '';
 
@@ -30,6 +31,7 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   beforeAll(async () => {
     process.env.DATABASE_PATH = ':memory:';
     process.env.NODE_ENV = 'development';
+    process.env.AUTH_EXPOSE_VERIFY_CODE = 'true';
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -72,6 +74,13 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   });
 
   it('owner creates shared cards with participant emails', async () => {
+    const createTagRes = await request(getHttpApp())
+      .post(`${baseUrl}/tags`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `phase4-shared-${Date.now()}`, color: '#22c55e' });
+    expect(createTagRes.status).toBe(201);
+    ownerTagId = getData<{ id: string }>(createTagRes.body).id;
+
     const externalEmail = 'external-user@test.com';
     const createInvalidCardRes = await request(getHttpApp())
       .post(`${baseUrl}/cards`)
@@ -92,6 +101,7 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
         name: 'Phase4 Shared Card',
         cardType: 'shared',
         pluginType: 'local_todo',
+        tagIds: [ownerTagId],
         participantEmails: [memberEmail, secondMemberEmail],
       });
     expect(createVisibleCardRes.status).toBe(201);
@@ -117,6 +127,7 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
         name: 'Phase4 Hidden Shared Card',
         cardType: 'shared',
         pluginType: 'local_todo',
+        tagIds: [ownerTagId],
         participantEmails: [memberEmail],
       });
     expect(createHiddenCardRes.status).toBe(201);
@@ -165,24 +176,38 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     expect(updatedTodoData.assignees).toHaveLength(2);
   });
 
-  it('mentioned users can see related shared cards and own shared todos only', async () => {
+  it('shared card participants can see card and only assigned-or-created todos', async () => {
     const memberCardsRes = await request(getHttpApp())
       .get(`${baseUrl}/cards`)
       .set('Authorization', `Bearer ${memberToken}`);
     expect(memberCardsRes.status).toBe(200);
-    const memberCards = getData<Array<{ id: string }>>(memberCardsRes.body);
+    const memberCards = getData<Array<{
+      id: string;
+      owner?: { email: string; mentionKey: string };
+      participants?: Array<{ email: string }>;
+    }>>(memberCardsRes.body);
 
     const memberCardIds = memberCards.map((item) => item.id);
     expect(memberCardIds).toContain(sharedCardId);
-    expect(memberCardIds).not.toContain(hiddenSharedCardId);
+    expect(memberCardIds).toContain(hiddenSharedCardId);
+    const memberSharedCard = memberCards.find((item) => item.id === sharedCardId);
+    expect(memberSharedCard?.owner?.email.toLowerCase()).toBe(ownerEmail.toLowerCase());
+    expect(memberSharedCard?.owner?.mentionKey.length).toBeGreaterThan(0);
+    expect(memberSharedCard?.participants?.map((item) => item.email.toLowerCase())).toEqual(
+      expect.arrayContaining([memberEmail.toLowerCase(), secondMemberEmail.toLowerCase()]),
+    );
 
     const sharedTodosRes = await request(getHttpApp())
       .get(`${baseUrl}/cards/${sharedCardId}/todos`)
       .set('Authorization', `Bearer ${memberToken}`);
     expect(sharedTodosRes.status).toBe(200);
-    const sharedTodos = getData<Array<{ id: string; content: string }>>(sharedTodosRes.body);
+    const sharedTodos = getData<Array<{ id: string; content: string; creatorName?: string; creatorUserId?: string }>>(
+      sharedTodosRes.body,
+    );
     expect(sharedTodos).toHaveLength(1);
     expect(sharedTodos[0]?.id).toBe(sharedTodoId);
+    expect(sharedTodos[0]?.creatorUserId).toBeDefined();
+    expect(sharedTodos[0]?.creatorName).toBe(ownerEmail);
 
     const secondMemberCardsRes = await request(getHttpApp())
       .get(`${baseUrl}/cards`)
@@ -201,6 +226,58 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     const secondMemberTodos = getData<Array<{ id: string }>>(secondMemberTodosRes.body);
     expect(secondMemberTodos).toHaveLength(1);
     expect(secondMemberTodos[0]?.id).toBe(sharedTodoId);
+
+    const hiddenCardTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${hiddenSharedCardId}/todos`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(hiddenCardTodosRes.status).toBe(200);
+    const hiddenCardTodos = getData<Array<{ content: string }>>(hiddenCardTodosRes.body);
+    expect(hiddenCardTodos).toHaveLength(0);
+  });
+
+  it('shared card participants can create and edit shared todos', async () => {
+    const memberCreateTodoRes = await request(getHttpApp())
+      .post(`${baseUrl}/todos`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        cardId: hiddenSharedCardId,
+        content: '成员直接在共享卡片里新增待办',
+        tagIds: [ownerTagId],
+      });
+    expect(memberCreateTodoRes.status).toBe(201);
+    const memberCreatedTodo = getData<{ id: string; cardId: string; tags: Array<{ id: string }> }>(memberCreateTodoRes.body);
+    expect(memberCreatedTodo.cardId).toBe(hiddenSharedCardId);
+    expect(memberCreatedTodo.tags.map((item) => item.id)).toContain(ownerTagId);
+
+    const memberHiddenCardTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${hiddenSharedCardId}/todos`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(memberHiddenCardTodosRes.status).toBe(200);
+    const memberHiddenCardTodos = getData<Array<{ id: string }>>(memberHiddenCardTodosRes.body);
+    expect(memberHiddenCardTodos.map((item) => item.id)).toContain(memberCreatedTodo.id);
+
+    const ownerHiddenCardTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${hiddenSharedCardId}/todos`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(ownerHiddenCardTodosRes.status).toBe(200);
+    const ownerHiddenCardTodos = getData<Array<{ id: string; creatorRole?: string; creatorName?: string }>>(
+      ownerHiddenCardTodosRes.body,
+    );
+    const ownerVisibleMemberTodo = ownerHiddenCardTodos.find((item) => item.id === memberCreatedTodo.id);
+    expect(ownerVisibleMemberTodo?.creatorRole).toBe('participant');
+    expect(ownerVisibleMemberTodo?.creatorName).toBe(memberEmail);
+
+    const memberEditTodoRes = await request(getHttpApp())
+      .patch(`${baseUrl}/todos/${sharedTodoId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        content: `成员已编辑：请 @${memberMentionKey} 和 @${secondMemberMentionKey} 一起确认共享卡片联调`,
+        tagIds: [ownerTagId],
+      });
+    expect(memberEditTodoRes.status).toBe(200);
+    const memberEditedTodo = getData<{ content: string; tags: Array<{ id: string }> }>(memberEditTodoRes.body);
+    expect(memberEditedTodo.content).toContain('成员已编辑');
+    expect(memberEditedTodo.tags.map((item) => item.id)).toContain(ownerTagId);
   });
 
   it('shared todo supports progress update by mentioned user', async () => {

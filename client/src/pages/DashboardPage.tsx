@@ -198,7 +198,24 @@ export function DashboardPage() {
 
   const copyText = async (text: string, successMessage: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const copied = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!copied) {
+          throw new Error('copy command failed');
+        }
+      }
       alert(successMessage);
     } catch {
       alert('复制失败，请手动复制。');
@@ -502,6 +519,14 @@ export function DashboardPage() {
     }
     setEditingTodo(todo || null);
     setShowTodoModal(true);
+  };
+
+  const buildMentionCandidates = (card?: Card | null) => {
+    const candidates = [
+      ...(card?.owner ? [card.owner] : []),
+      ...((Array.isArray(card?.participants) ? card?.participants : [])),
+    ];
+    return [...new Map(candidates.map((item) => [item.id, item])).values()];
   };
 
   const handleOpenCardModal = (card?: Card) => {
@@ -1086,7 +1111,8 @@ export function DashboardPage() {
                 const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
                 const isCardOwner = card.userId === user?.id;
                 const isTapdCard = card.pluginType === 'tapd';
-                const canQuickCreate = isCardOwner && !isTapdCard;
+                const canManageSharedTodos = !isTapdCard && (isCardOwner || card.cardType === 'shared');
+                const canQuickCreate = canManageSharedTodos;
                 const quickTodoDraft = quickTodoDraftByCardId[card.id] ?? '';
                 const showQuickInput =
                   canQuickCreate &&
@@ -1154,7 +1180,7 @@ export function DashboardPage() {
                         {showCompleted ? '☑' : '☐'}
                       </button>
                     )}
-                    {isCardOwner && !isTapdCard && (
+                    {canManageSharedTodos && (
                       <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
                     )}
                     {isCardOwner && (
@@ -1171,12 +1197,12 @@ export function DashboardPage() {
                       key={todo.id}
                       todo={todo}
                       tags={tags}
+                      currentUserId={user?.id}
                       hiddenTagIds={cardTagIds}
                       onToggle={() => handleToggleTodo(todo.id, todo.status)}
                       showToggle={card.pluginType !== 'tapd'}
                       onEdit={() => {
                         if (card.pluginType === 'tapd') return;
-                        if (card.cardType === 'shared' && card.userId !== user?.id) return;
                         handleOpenTodoModal(todo, card);
                       }}
                       onDelete={() => handleDeleteTodo(todo.id)}
@@ -1199,7 +1225,7 @@ export function DashboardPage() {
           todo={editingTodo}
           card={activeTodoCard}
           tags={tags}
-          mentionCandidates={activeTodoCard?.participants ?? []}
+          mentionCandidates={buildMentionCandidates(activeTodoCard)}
           isSaving={createTodoMutation.isPending || updateTodoMutation.isPending || createTagMutation.isPending}
           onSave={handleSaveTodo}
           onCreateTag={(name, color) => createTagSafely({ name, color })}

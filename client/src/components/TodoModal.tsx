@@ -149,6 +149,11 @@ export function TodoModal({
   const [highlightedMentionIndex, setHighlightedMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isSharedCard = (card?.cardType ?? 'personal') === 'shared';
+  const availableTags = useMemo(
+    () => (isSharedCard ? (Array.isArray(card?.tags) ? card.tags : []) : (Array.isArray(tags) ? tags : [])),
+    [card?.tags, isSharedCard, tags],
+  );
+  const availableTagIdSet = useMemo(() => new Set(availableTags.map((tag) => tag.id)), [availableTags]);
 
   const normalizedMentionCandidates = useMemo(
     () =>
@@ -180,7 +185,11 @@ export function TodoModal({
       setContent(todo.content);
       setDueAt(toDateTimeLocalInputValue(todo.dueAt));
       setExecuteAt(toDateTimeLocalInputValue(todo.executeAt));
-      setSelectedTagIds((Array.isArray(todo.tags) ? todo.tags : []).map((t) => t.id));
+      setSelectedTagIds(isSharedCard
+        ? availableTags.map((tag) => tag.id)
+        : (Array.isArray(todo.tags) ? todo.tags : [])
+            .map((t) => t.id)
+            .filter((tagId) => availableTagIdSet.has(tagId)));
       setActiveMention(null);
       setMentionAnchor(null);
       setHighlightedMentionIndex(0);
@@ -190,12 +199,14 @@ export function TodoModal({
     setContent('');
     setDueAt('');
     setExecuteAt('');
-    setSelectedTagIds(defaultTagIds);
+    setSelectedTagIds(isSharedCard
+      ? availableTags.map((tag) => tag.id)
+      : defaultTagIds.filter((tagId) => availableTagIdSet.has(tagId)));
     setNewTagName('');
     setActiveMention(null);
     setMentionAnchor(null);
     setHighlightedMentionIndex(0);
-  }, [todo, defaultTagIds]);
+  }, [todo, defaultTagIds, availableTagIdSet, availableTags, isSharedCard]);
 
   useEffect(() => {
     if (highlightedMentionIndex >= filteredMentionCandidates.length) {
@@ -256,7 +267,9 @@ export function TodoModal({
         content: content.trim(),
         dueAt: dueAt || undefined,
         executeAt: executeAt || undefined,
-        tagIds: selectedTagIds,
+        tagIds: isSharedCard
+          ? availableTags.map((tag) => tag.id)
+          : selectedTagIds.filter((tagId) => availableTagIdSet.has(tagId)),
       };
       onSave(data);
       return;
@@ -266,12 +279,17 @@ export function TodoModal({
       content: content.trim(),
       dueAt: dueAt || undefined,
       executeAt: executeAt || undefined,
-      tagIds: selectedTagIds,
+      tagIds: isSharedCard
+        ? availableTags.map((tag) => tag.id)
+        : selectedTagIds.filter((tagId) => availableTagIdSet.has(tagId)),
     };
     onSave(data);
   };
 
   const toggleTag = (tagId: string) => {
+    if (isSharedCard || !availableTagIdSet.has(tagId)) {
+      return;
+    }
     setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]));
   };
 
@@ -394,28 +412,32 @@ export function TodoModal({
             <div className="mb">
               <label>标签</label>
               <div className="tag-selector">
-                {(Array.isArray(tags) ? tags : []).map((tag) => (
+                {availableTags.map((tag) => (
                   <span key={tag.id} className={`tag-option ${selectedTagIds.includes(tag.id) ? 'selected' : ''}`} onClick={() => toggleTag(tag.id)}>
                     {tag.name}
                   </span>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                <input
-                  type="text"
-                  placeholder="输入新标签名，回车添加..."
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  disabled={isSaving}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void handleCreateTag();
-                    }
-                  }}
-                  style={{ flex: 1, padding: '8px 12px' }}
-                />
-              </div>
+              {isSharedCard ? (
+                <div className="mention-hint">共享卡片待办会自动继承当前卡片的全部标签。</div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="输入新标签名，回车添加..."
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    disabled={isSaving}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleCreateTag();
+                      }
+                    }}
+                    style={{ flex: 1, padding: '8px 12px' }}
+                  />
+                </div>
+              )}
             </div>
             <div className="fr">
               <div className="mb">

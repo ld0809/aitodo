@@ -59,6 +59,9 @@ export interface Todo {
   cardId?: string | null;
   content: string;
   handlerNames?: string[];
+  creatorUserId?: string;
+  creatorName?: string;
+  creatorRole?: 'owner' | 'participant';
   dueAt?: string;
   executeAt?: string;
   status: 'todo' | 'done' | 'completed';
@@ -82,6 +85,7 @@ export interface TodoProgressEntry {
 export interface Card {
   id: string;
   userId: string;
+  owner?: CardParticipant;
   name: string;
   cardType: 'personal' | 'shared';
   sortBy: 'due_at' | 'created_at' | 'execute_at';

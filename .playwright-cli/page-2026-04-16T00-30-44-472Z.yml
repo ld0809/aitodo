@@ -1,0 +1,18 @@
+- generic [ref=e46]:
+  - banner [ref=e47]:
+    - generic "未设置目标" [ref=e49]:
+      - generic [ref=e50]: 未设置（点击头像设置）
+  - main [ref=e51]:
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - generic [ref=e58]: 990发版 · 共享
+          - generic [ref=e59]: "1"
+        - generic [ref=e60]:
+          - button "☑" [ref=e61] [cursor=pointer]
+          - button "+" [ref=e62] [cursor=pointer]
+      - generic [ref=e65] [cursor=pointer]:
+        - button "0" [ref=e68]
+        - generic [ref=e69]:
+          - generic [ref=e70]: "@测试1 请执行云控A的修改 @test2 阿斯蒂芬"
+          - generic [ref=e71]: 创建人：未知成员

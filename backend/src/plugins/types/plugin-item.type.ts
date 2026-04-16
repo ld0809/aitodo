@@ -8,6 +8,9 @@ export interface PluginItem {
   id: string;
   content: string;
   handlerNames?: string[];
+  creatorUserId?: string;
+  creatorName?: string;
+  creatorRole?: 'owner' | 'participant';
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';
@@ -21,6 +24,9 @@ export interface CardTodoView {
   id: string;
   content: string;
   handlerNames?: string[];
+  creatorUserId?: string;
+  creatorName?: string;
+  creatorRole?: 'owner' | 'participant';
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';

@@ -67,25 +67,25 @@ export class CardsService {
       .createQueryBuilder('card')
       .leftJoinAndSelect('card.tags', 'tag')
       .leftJoinAndSelect('card.participants', 'participant')
+      .leftJoin('card.participants', 'accessibleParticipant')
       .where('card.user_id = :userId', { userId })
-      .orWhere(
-        `
-          card.card_type = :sharedType
-          AND EXISTS (
-            SELECT 1
-            FROM todos visible_todo
-            INNER JOIN todo_assignees visible_assignee
-              ON visible_assignee.todo_id = visible_todo.id
-            WHERE visible_todo.card_id = card.id
-              AND visible_todo.deleted_at IS NULL
-              AND visible_assignee.user_id = :userId
-          )
-        `,
-        { sharedType: 'shared', userId },
-      )
+      .orWhere('card.card_type = :sharedType AND accessibleParticipant.id = :userId', { sharedType: 'shared', userId })
       .orderBy('card.created_at', 'DESC')
       .distinct(true)
       .getMany();
+
+    const ownerIds = [...new Set(cards.map((card) => card.userId).filter(Boolean))];
+    const owners = ownerIds.length
+      ? await this.userRepository.find({
+          where: {
+            id: In(ownerIds),
+          },
+        })
+      : [];
+    const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
+    for (const card of cards) {
+      card.user = ownerById.get(card.userId) ?? card.user;
+    }
 
     const cardsWithUserLayout = await this.applyUserLayouts(userId, cards, viewport);
     return cardsWithUserLayout.map((card) => this.toCardResponse(card));
@@ -228,6 +228,7 @@ export class CardsService {
       relations: {
         tags: true,
         participants: true,
+        user: true,
       },
     });
 
@@ -244,6 +245,7 @@ export class CardsService {
       relations: {
         tags: true,
         participants: true,
+        user: true,
       },
     });
 
@@ -259,15 +261,8 @@ export class CardsService {
       throw new NotFoundException('card not found');
     }
 
-    const assignedCount = await this.todoRepository
-      .createQueryBuilder('todo')
-      .innerJoin('todo.assignees', 'assignee')
-      .where('todo.card_id = :cardId', { cardId: id })
-      .andWhere('todo.deleted_at IS NULL')
-      .andWhere('assignee.id = :userId', { userId })
-      .getCount();
-
-    if (assignedCount === 0) {
+    const isParticipant = (card.participants ?? []).some((participant) => participant.id === userId);
+    if (!isParticipant) {
       throw new NotFoundException('card not found');
     }
 
@@ -277,24 +272,12 @@ export class CardsService {
   private async validateDashboardLayoutCards(userId: string, cardIds: string[]) {
     const accessibleCards = await this.cardRepository
       .createQueryBuilder('card')
+      .leftJoin('card.participants', 'participant')
       .where('card.id IN (:...cardIds)', { cardIds })
       .andWhere(
         new Brackets((qb) => {
-          qb.where('card.user_id = :userId', { userId }).orWhere(
-            `
-              card.card_type = :sharedType
-              AND EXISTS (
-                SELECT 1
-                FROM todos visible_todo
-                INNER JOIN todo_assignees visible_assignee
-                  ON visible_assignee.todo_id = visible_todo.id
-                WHERE visible_todo.card_id = card.id
-                  AND visible_todo.deleted_at IS NULL
-                  AND visible_assignee.user_id = :userId
-              )
-            `,
-            { sharedType: 'shared', userId },
-          );
+          qb.where('card.user_id = :userId', { userId })
+            .orWhere('card.card_type = :sharedType AND participant.id = :userId', { sharedType: 'shared', userId });
         }),
       )
       .select(['card.id'])
@@ -448,10 +431,17 @@ export class CardsService {
   }
 
   private toCardResponse(card: Card) {
-    const restCard = { ...(card as Card & { layoutsJson?: string | null }) };
-    delete restCard.layoutsJson;
+    const { layoutsJson: _layoutsJson, user: _user, ...restCard } = card as Card & { layoutsJson?: string | null; user?: User };
     return {
       ...restCard,
+      owner: card.user
+        ? {
+            id: card.user.id,
+            email: card.user.email,
+            nickname: card.user.nickname,
+            mentionKey: this.buildMentionKey(card.user),
+          }
+        : undefined,
       participants: (card.participants ?? []).map((participant) => ({
         id: participant.id,
         email: participant.email,
