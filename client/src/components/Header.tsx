@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenProfileSettings: () => void;
   onOpenOrganizationSettings: () => void;
   onOpenGoalSettings: () => void;
+  onOpenViewModeSwitch?: () => void;
 }
 
 export function Header({
@@ -28,6 +29,7 @@ export function Header({
   onOpenProfileSettings,
   onOpenOrganizationSettings,
   onOpenGoalSettings,
+  onOpenViewModeSwitch,
 }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -110,6 +112,16 @@ export function Header({
                 🎯 目标设置
               </div>
               <div onClick={() => { setShowUserMenu(false); onOpenTags(); }}>🏷️ 标签管理</div>
+              {onOpenViewModeSwitch && (
+                <div
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    onOpenViewModeSwitch();
+                  }}
+                >
+                  🪟 首页视图
+                </div>
+              )}
               <div
                 onClick={() => {
                   setShowUserMenu(false);

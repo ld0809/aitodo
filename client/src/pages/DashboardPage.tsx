@@ -9,7 +9,7 @@ import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { reportsApi, type AiReportResult } from '../api/reports';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
 import { usersApi } from '../api/users';
-import type { Todo, Card, LayoutViewport, TodoProgressEntry } from '../types';
+import type { Todo, Card, LayoutViewport, TodoProgressEntry, Tag } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
@@ -18,7 +18,7 @@ import { TagModal } from '../components/TagModal';
 import { ProgressModal } from '../components/ProgressModal';
 import { Button } from '../components/ui/Button';
 import { getTodosForCard, isCompletedTodo } from '../lib/cardTodos';
-import { sortTodosForCardDisplay } from '../lib/todoSort';
+import { compareTodosForCardDisplay, sortTodosForCardDisplay } from '../lib/todoSort';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './DashboardPage.css';
@@ -28,6 +28,24 @@ function formatDateInput(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function toDateTimeLocalInputValue(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value).replace(' ', 'T').slice(0, 16);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function getDefaultLastWeekRange(): { startDate: string; endDate: string } {
@@ -69,11 +87,97 @@ interface GridLayoutItem {
   h: number;
 }
 
+type DashboardViewMode = 'board' | 'list';
+
+const DASHBOARD_VIEW_MODE_STORAGE_KEY = 'aitodo:dashboard:view-mode';
+
+interface ListTodoEntry {
+  todo: Todo;
+  effectiveTags: Tag[];
+  sourceCard: Card | null;
+  sourceLabel: string;
+  canToggle: boolean;
+  canEdit: boolean;
+  canUpdateProgress: boolean;
+  canDelete: boolean;
+  isExternal: boolean;
+}
+
+interface ListFilterItem {
+  id: string;
+  kind: 'all' | 'tag' | 'tapd_card';
+  name: string;
+  count: number;
+  sourceCard?: Card;
+}
+
 const dragFreeCompactor = {
   ...noCompactor,
   allowOverlap: true,
 };
 const TAPD_CARD_AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const TAPD_DETAIL_VIEW_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/api/tapd/detail-view`;
+
+interface TapdDetailViewRef {
+  workspaceId: string;
+  type: 'story' | 'bug';
+  id: string;
+}
+
+function parseTapdDetailViewRef(url?: string | null): TapdDetailViewRef | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(
+      url,
+      typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
+    );
+    const segments = parsedUrl.pathname.split('/').filter(Boolean);
+    const tapdFeIndex = segments.indexOf('tapd_fe');
+    const typeIndex = segments.findIndex((segment) => segment === 'story' || segment === 'bug');
+    const workspaceId = tapdFeIndex >= 0 ? segments[tapdFeIndex + 1] : '';
+    const type = typeIndex >= 0 ? segments[typeIndex] : null;
+    const detailMarker = typeIndex >= 0 ? segments[typeIndex + 1] : '';
+    const id = typeIndex >= 0 ? segments[typeIndex + 2] : '';
+
+    if (!workspaceId || !type || detailMarker !== 'detail' || !id) {
+      return null;
+    }
+
+    return {
+      workspaceId,
+      type: type as 'story' | 'bug',
+      id,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildTapdDetailViewUrl(url?: string | null): string | null {
+  const detailRef = parseTapdDetailViewRef(url);
+  if (!detailRef) {
+    return null;
+  }
+
+  const query = new URLSearchParams({
+    workspaceId: detailRef.workspaceId,
+    type: detailRef.type,
+    id: detailRef.id,
+  });
+  return `${TAPD_DETAIL_VIEW_BASE_URL}?${query.toString()}`;
+}
+
+function getStoredDashboardViewMode(): DashboardViewMode {
+  if (typeof window === 'undefined') {
+    return 'board';
+  }
+
+  const storedValue = window.localStorage.getItem(DASHBOARD_VIEW_MODE_STORAGE_KEY);
+  return storedValue === 'list' ? 'list' : 'board';
+}
 
 function intersectsHorizontally(left: GridLayoutItem, right: GridLayoutItem): boolean {
   return left.x < right.x + right.w && right.x < left.x + left.w;
@@ -168,6 +272,15 @@ export function DashboardPage() {
   const [focusedQuickInputCardId, setFocusedQuickInputCardId] = useState<string | null>(null);
   const [quickTodoDraftByCardId, setQuickTodoDraftByCardId] = useState<Record<string, string>>({});
   const [quickCreatingCardId, setQuickCreatingCardId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<DashboardViewMode>(() => getStoredDashboardViewMode());
+  const [showViewModeModal, setShowViewModeModal] = useState(false);
+  const [selectedListFilterId, setSelectedListFilterId] = useState('all');
+  const [selectedListTodoId, setSelectedListTodoId] = useState<string | null>(null);
+  const [listQuickCreateDraft, setListQuickCreateDraft] = useState('');
+  const [listDetailContent, setListDetailContent] = useState('');
+  const [listDetailDueAt, setListDetailDueAt] = useState('');
+  const [listDetailExecuteAt, setListDetailExecuteAt] = useState('');
+  const [listDetailTagIds, setListDetailTagIds] = useState<string[]>([]);
   const CARD_H = 3;
   const CARD_MIN_H = 2;
   const CARD_W = 1;
@@ -216,6 +329,14 @@ export function DashboardPage() {
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(DASHBOARD_VIEW_MODE_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     if (!openCardMenuId) {
@@ -307,11 +428,164 @@ export function DashboardPage() {
     queryFn: () => todosApi.getProgress(activeProgressTodo!.id).then((res) => res.data as TodoProgressEntry[]),
   });
 
+  const cardById = useMemo(
+    () => new Map((Array.isArray(cards) ? cards : []).map((card: Card) => [card.id, card])),
+    [cards],
+  );
+
+  const listTodoEntries = useMemo(() => {
+    const entryMap = new Map<string, ListTodoEntry>();
+
+    const upsertEntry = (todo: Todo, sourceCard?: Card | null) => {
+      const resolvedCard = sourceCard ?? (todo.cardId ? cardById.get(todo.cardId) ?? null : null);
+      const effectiveTags = Array.isArray(todo.tags) && todo.tags.length > 0
+        ? todo.tags
+        : (Array.isArray(resolvedCard?.tags) ? resolvedCard.tags : []);
+      const todoWithEffectiveTags = effectiveTags === todo.tags
+        ? todo
+        : {
+            ...todo,
+            tags: effectiveTags,
+          };
+      const isExternal = resolvedCard?.pluginType === 'tapd';
+
+      entryMap.set(todo.id, {
+        todo: todoWithEffectiveTags,
+        effectiveTags,
+        sourceCard: resolvedCard,
+        sourceLabel: resolvedCard
+          ? `${resolvedCard.name}${resolvedCard.cardType === 'shared' ? ' · 共享' : ''}`
+          : '本地待办',
+        canToggle: !isExternal,
+        canEdit: !isExternal,
+        canUpdateProgress: !isExternal,
+        canDelete: todo.userId === user?.id,
+        isExternal,
+      });
+    };
+
+    (Array.isArray(todos) ? todos : []).forEach((todo) => upsertEntry(todo));
+
+    (Array.isArray(cards) ? cards : [])
+      .filter((card: Card) => card.pluginType === 'tapd' || card.cardType === 'shared')
+      .forEach((card: Card) => {
+        const sourceTodos = remoteCardTodos[card.id] ?? [];
+        sourceTodos.forEach((todo) => upsertEntry(todo, card));
+      });
+
+    return [...entryMap.values()].sort((left, right) => compareTodosForCardDisplay(left.todo, right.todo));
+  }, [cardById, cards, remoteCardTodos, todos, user?.id]);
+
+  const listFilterItems = useMemo<ListFilterItem[]>(() => {
+    const countByTagId = new Map<string, number>();
+    listTodoEntries.forEach((entry) => {
+      entry.effectiveTags.forEach((tag) => {
+        countByTagId.set(tag.id, (countByTagId.get(tag.id) ?? 0) + 1);
+      });
+    });
+
+    return [
+      {
+        id: 'all',
+        kind: 'all' as const,
+        name: '全部',
+        count: listTodoEntries.length,
+      },
+      ...(Array.isArray(tags) ? tags : []).map((tag) => ({
+        id: `tag:${tag.id}`,
+        kind: 'tag' as const,
+        name: tag.name,
+        count: countByTagId.get(tag.id) ?? 0,
+      })),
+      ...(Array.isArray(cards) ? cards : [])
+        .filter((card: Card) => card.pluginType === 'tapd')
+        .map((card: Card) => ({
+          id: `tapd:${card.id}`,
+          kind: 'tapd_card' as const,
+          name: card.name,
+          count: Array.isArray(remoteCardTodos[card.id]) ? remoteCardTodos[card.id].length : 0,
+          sourceCard: card,
+      })),
+    ];
+  }, [cards, listTodoEntries, remoteCardTodos, tags]);
+
+  const filteredListTodoEntries = useMemo(() => {
+    if (selectedListFilterId === 'all') {
+      return listTodoEntries;
+    }
+
+    if (selectedListFilterId.startsWith('tapd:')) {
+      const cardId = selectedListFilterId.slice('tapd:'.length);
+      return listTodoEntries.filter((entry) => entry.sourceCard?.id === cardId);
+    }
+
+    const tagId = selectedListFilterId.startsWith('tag:')
+      ? selectedListFilterId.slice('tag:'.length)
+      : selectedListFilterId;
+
+    return listTodoEntries.filter((entry) =>
+      entry.effectiveTags.some((tag) => tag.id === tagId),
+    );
+  }, [listTodoEntries, selectedListFilterId]);
+
+  const selectedListTodoEntry = useMemo(
+    () => filteredListTodoEntries.find((entry) => entry.todo.id === selectedListTodoId) ?? null,
+    [filteredListTodoEntries, selectedListTodoId],
+  );
+  const selectedTapdDetailViewUrl = useMemo(() => {
+    if (!selectedListTodoEntry || selectedListTodoEntry.sourceCard?.pluginType !== 'tapd') {
+      return null;
+    }
+    return buildTapdDetailViewUrl(selectedListTodoEntry.todo.url);
+  }, [selectedListTodoEntry]);
+  const { data: selectedTodoProgressEntries = [] } = useQuery({
+    queryKey: ['todo-progress-inline', userScope, selectedListTodoEntry?.todo.id],
+    enabled: viewMode === 'list' && !!selectedListTodoEntry?.todo.id && selectedListTodoEntry.canUpdateProgress,
+    queryFn: () => todosApi.getProgress(selectedListTodoEntry!.todo.id).then((res) => res.data as TodoProgressEntry[]),
+  });
+
   useEffect(() => {
     if (meProfile) {
       updateUser(meProfile);
     }
   }, [meProfile, updateUser]);
+
+  useEffect(() => {
+    const hasSelectedFilter = selectedListFilterId === 'all'
+      || listFilterItems.some((item) => item.id === selectedListFilterId);
+    if (!hasSelectedFilter) {
+      setSelectedListFilterId('all');
+    }
+  }, [listFilterItems, selectedListFilterId]);
+
+  useEffect(() => {
+    if (viewMode !== 'list') {
+      return;
+    }
+
+    const nextSelectedTodoId = filteredListTodoEntries.some((entry) => entry.todo.id === selectedListTodoId)
+      ? selectedListTodoId
+      : filteredListTodoEntries[0]?.todo.id ?? null;
+
+    if (nextSelectedTodoId !== selectedListTodoId) {
+      setSelectedListTodoId(nextSelectedTodoId);
+    }
+  }, [filteredListTodoEntries, selectedListTodoId, viewMode]);
+
+  useEffect(() => {
+    if (!selectedListTodoEntry) {
+      setListDetailContent('');
+      setListDetailDueAt('');
+      setListDetailExecuteAt('');
+      setListDetailTagIds([]);
+      return;
+    }
+
+    setListDetailContent(selectedListTodoEntry.todo.content);
+    setListDetailDueAt(toDateTimeLocalInputValue(selectedListTodoEntry.todo.dueAt));
+    setListDetailExecuteAt(toDateTimeLocalInputValue(selectedListTodoEntry.todo.executeAt));
+    setListDetailTagIds(selectedListTodoEntry.effectiveTags.map((tag) => tag.id));
+  }, [selectedListTodoEntry]);
 
   const createTodoMutation = useMutation({
     mutationFn: (data: CreateTodoDto) => todosApi.create(data),
@@ -357,7 +631,8 @@ export function DashboardPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
       queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
-      queryClient.invalidateQueries({ queryKey: ['todo-progress', userScope, activeProgressTodo?.id] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress-inline'] });
       setProgressDraft('');
       setShowProgressModal(false);
       setActiveProgressTodo(null);
@@ -613,6 +888,70 @@ export function DashboardPage() {
       return;
     }
     createProgressMutation.mutate({ id: activeProgressTodo.id, content });
+  };
+
+  const handleQuickCreateListTodo = () => {
+    const content = listQuickCreateDraft.trim();
+    if (!content || createTodoMutation.isPending || selectedListFilterId.startsWith('tapd:')) {
+      return;
+    }
+
+    const tagIds = selectedListFilterId === 'all'
+      ? undefined
+      : selectedListFilterId.startsWith('tag:')
+        ? [selectedListFilterId.slice('tag:'.length)]
+        : undefined;
+    createTodoMutation.mutate(
+      {
+        content,
+        tagIds,
+      },
+      {
+        onSuccess: (res) => {
+          setListQuickCreateDraft('');
+          setSelectedListTodoId(res.data.id);
+        },
+        onError: (error: unknown) => {
+          alert(getErrorMessage(error, '快捷创建待办失败'));
+        },
+      },
+    );
+  };
+
+  const handleToggleListDetailTag = (tagId: string) => {
+    const isSharedTodo = selectedListTodoEntry?.sourceCard?.cardType === 'shared';
+    if (!selectedListTodoEntry || selectedListTodoEntry.isExternal || isSharedTodo) {
+      return;
+    }
+
+    setListDetailTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((currentId) => currentId !== tagId) : [...prev, tagId],
+    );
+  };
+
+  const handleSaveListDetail = () => {
+    if (!selectedListTodoEntry || !selectedListTodoEntry.canEdit) {
+      return;
+    }
+
+    const normalizedContent = listDetailContent.trim();
+    if (!normalizedContent) {
+      alert('请输入待办内容');
+      return;
+    }
+
+    const isSharedTodo = selectedListTodoEntry.sourceCard?.cardType === 'shared';
+    const payload: UpdateTodoDto = {
+      content: normalizedContent,
+      dueAt: listDetailDueAt || undefined,
+      executeAt: listDetailExecuteAt || undefined,
+      tagIds: isSharedTodo ? selectedListTodoEntry.effectiveTags.map((tag) => tag.id) : listDetailTagIds,
+    };
+
+    updateTodoMutation.mutate({
+      id: selectedListTodoEntry.todo.id,
+      data: payload,
+    });
   };
 
   const handleOpenAiReportModal = () => {
@@ -891,6 +1230,8 @@ export function DashboardPage() {
     return resolveLayoutOverlaps(baseLayout);
   }, [cards, gridCols]);
 
+  const selectedListFilterItem = listFilterItems.find((item) => item.id === selectedListFilterId) ?? listFilterItems[0];
+
   if (todosLoading || cardsLoading) {
     return <div className="loading">加载中...</div>;
   }
@@ -912,196 +1253,498 @@ export function DashboardPage() {
           setGoalDraft(user?.target || '');
           setShowGoalModal(true);
         }}
+        onOpenViewModeSwitch={() => setShowViewModeModal(true)}
       />
 
       <main className="main">
-        <div ref={gridContainerRef}>
-        <GridLayoutComponent
-          key={`grid-${gridCols}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join("|")}`}
-          autoSize
-          className="layout"
-          layout={gridLayout}
-          width={gridWidth}
-          gridConfig={{
-            cols: gridCols,
-            rowHeight: GRID_ROW_HEIGHT,
-            margin: GRID_MARGIN,
-          }}
-          compactor={dragFreeCompactor}
-          dragConfig={{
-            handle: '.card-header',
-            cancel: '.card-actions, .card-actions button, .card-quick-input',
-          }}
-          resizeConfig={{
-            enabled: true,
-            handles: ['s'],
-          }}
-          onDragStop={handleDragStop}
-          onResizeStop={handleResizeStop}
-        >
-          {(Array.isArray(cards) ? cards : []).map((card: Card) => (
-            <div key={card.id} className="grid-card-inner">
-              {(() => {
-                const cardTodos = getTodosForCard(card, todos, remoteCardTodos);
-                const sortedCardTodos = sortTodosForCardDisplay(
-                  Array.isArray(cardTodos) ? cardTodos : [],
-                );
-                const showCompleted = showCompletedByCard[card.id] ?? true;
-                const visibleCardTodos = showCompleted
-                  ? sortedCardTodos
-                  : sortedCardTodos.filter((todo) => !isCompletedTodo(todo));
-                const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
-                const isCardOwner = card.userId === user?.id;
-                const isTapdCard = card.pluginType === 'tapd';
-                const canManageSharedTodos = !isTapdCard && (isCardOwner || card.cardType === 'shared');
-                const canQuickCreate = canManageSharedTodos;
-                const quickTodoDraft = quickTodoDraftByCardId[card.id] ?? '';
-                const showQuickInput =
-                  canQuickCreate &&
-                  (hoveredCardId === card.id || focusedQuickInputCardId === card.id);
-                return (
-              <div
-                className="card"
-                onMouseEnter={() => setHoveredCardId(card.id)}
-                onMouseLeave={() => {
-                  setHoveredCardId((prev) => (prev === card.id ? null : prev));
-                }}
-              >
-                <div className="card-header">
-                  {showQuickInput ? (
+        {viewMode === 'board' ? (
+          <div ref={gridContainerRef}>
+            <GridLayoutComponent
+              key={`grid-${gridCols}-${cards.map((c: Card) => `${c.id}:${c.x}:${c.y}`).join('|')}`}
+              autoSize
+              className="layout"
+              layout={gridLayout}
+              width={gridWidth}
+              gridConfig={{
+                cols: gridCols,
+                rowHeight: GRID_ROW_HEIGHT,
+                margin: GRID_MARGIN,
+              }}
+              compactor={dragFreeCompactor}
+              dragConfig={{
+                handle: '.card-header',
+                cancel: '.card-actions, .card-actions button, .card-quick-input',
+              }}
+              resizeConfig={{
+                enabled: true,
+                handles: ['s'],
+              }}
+              onDragStop={handleDragStop}
+              onResizeStop={handleResizeStop}
+            >
+              {(Array.isArray(cards) ? cards : []).map((card: Card) => (
+                <div key={card.id} className="grid-card-inner">
+                  {(() => {
+                    const cardTodos = getTodosForCard(card, todos, remoteCardTodos);
+                    const sortedCardTodos = sortTodosForCardDisplay(
+                      Array.isArray(cardTodos) ? cardTodos : [],
+                    );
+                    const showCompleted = showCompletedByCard[card.id] ?? true;
+                    const visibleCardTodos = showCompleted
+                      ? sortedCardTodos
+                      : sortedCardTodos.filter((todo) => !isCompletedTodo(todo));
+                    const cardTagIds = (Array.isArray(card.tags) ? card.tags : []).map((tag) => tag.id);
+                    const isCardOwner = card.userId === user?.id;
+                    const isTapdCard = card.pluginType === 'tapd';
+                    const canManageSharedTodos = !isTapdCard && (isCardOwner || card.cardType === 'shared');
+                    const canQuickCreate = canManageSharedTodos;
+                    const quickTodoDraft = quickTodoDraftByCardId[card.id] ?? '';
+                    const showQuickInput =
+                      canQuickCreate &&
+                      (hoveredCardId === card.id || focusedQuickInputCardId === card.id);
+                    return (
+                      <div
+                        className="card"
+                        onMouseEnter={() => setHoveredCardId(card.id)}
+                        onMouseLeave={() => {
+                          setHoveredCardId((prev) => (prev === card.id ? null : prev));
+                        }}
+                      >
+                        <div className="card-header">
+                          {showQuickInput ? (
+                            <input
+                              className="card-quick-input"
+                              value={quickTodoDraft}
+                              placeholder="输入待办，回车创建"
+                              maxLength={500}
+                              disabled={quickCreatingCardId === card.id}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onFocus={() => setFocusedQuickInputCardId(card.id)}
+                              onBlur={() => {
+                                setFocusedQuickInputCardId((prev) => (prev === card.id ? null : prev));
+                              }}
+                              onChange={(e) => handleChangeQuickTodoDraft(card.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleQuickCreateTodo(card);
+                                  e.currentTarget.blur();
+                                  return;
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setQuickTodoDraftByCardId((prev) => ({
+                                    ...prev,
+                                    [card.id]: '',
+                                  }));
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div className="card-title">
+                              <span className="card-title-text">
+                                {card.name}
+                                {card.cardType === 'shared' ? ' · 共享' : ''}
+                              </span>
+                              <span className="count">{visibleCardTodos.length}</span>
+                            </div>
+                          )}
+                          <div className="card-actions">
+                            {!isTapdCard && (
+                              <button
+                                className={`toggle-completed-btn ${showCompleted ? 'active' : ''}`}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleCompletedVisibility(card.id);
+                                }}
+                                title={showCompleted ? '隐藏已完成待办' : '显示已完成待办'}
+                              >
+                                {showCompleted ? '☑' : '☐'}
+                              </button>
+                            )}
+                            {canManageSharedTodos && (
+                              <button
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenTodoModal(undefined, card);
+                                }}
+                                title="添加待办"
+                              >
+                                +
+                              </button>
+                            )}
+                            {isCardOwner && (
+                              <button
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenCardModal(card);
+                                }}
+                              >
+                                ✎
+                              </button>
+                            )}
+                            {isCardOwner && (
+                              <div
+                                className="card-action-menu-wrap"
+                                ref={openCardMenuId === card.id ? cardMenuRef : null}
+                              >
+                                <button
+                                  className="card-actions__more-trigger"
+                                  aria-haspopup="menu"
+                                  aria-expanded={openCardMenuId === card.id}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenCardMenuId((prev) => (prev === card.id ? null : card.id));
+                                  }}
+                                >
+                                  更多
+                                </button>
+                                {openCardMenuId === card.id && (
+                                  <div className="card-action-menu" role="menu" aria-label={`${card.name}更多操作`}>
+                                    <button
+                                      role="menuitem"
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleArchiveCard(card.id);
+                                      }}
+                                    >
+                                      归档卡片
+                                    </button>
+                                    <button
+                                      role="menuitem"
+                                      className="danger"
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteCard(card.id);
+                                      }}
+                                    >
+                                      删除卡片
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          {visibleCardTodos.map((todo: Todo) => (
+                            <TodoCard
+                              key={todo.id}
+                              todo={todo}
+                              tags={tags}
+                              currentUserId={user?.id}
+                              hiddenTagIds={cardTagIds}
+                              onToggle={() => handleToggleTodo(todo.id, todo.status)}
+                              showToggle={card.pluginType !== 'tapd'}
+                              onEdit={() => {
+                                if (card.pluginType === 'tapd') return;
+                                handleOpenTodoModal(todo, card);
+                              }}
+                              onDelete={() => handleDeleteTodo(todo.id)}
+                              canUpdateProgress={card.pluginType !== 'tapd'}
+                              onOpenProgress={() => handleOpenProgressModal(todo)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </GridLayoutComponent>
+          </div>
+        ) : (
+          <section className="list-mode-shell">
+            <div className="list-mode-board">
+              <aside className="list-mode-pane list-mode-pane--tags">
+                <div className="list-mode-pane-body list-mode-tag-list">
+                  {listFilterItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`list-mode-tag-item-wrap ${selectedListFilterId === item.id ? 'active' : ''} ${item.kind === 'tapd_card' ? 'tapd' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className={`list-mode-tag-item ${selectedListFilterId === item.id ? 'active' : ''} ${item.kind === 'tapd_card' ? 'tapd' : ''}`}
+                        onClick={() => setSelectedListFilterId(item.id)}
+                      >
+                        <span className="list-mode-tag-item__main">
+                          <span className="list-mode-tag-item__title">{item.name}</span>
+                          {item.kind === 'tapd_card' && (
+                            <span className="list-mode-tag-item__badge tapd-badge tapd-badge--compact">TAPD</span>
+                          )}
+                        </span>
+                        <span className="list-mode-tag-item__count">{item.count}</span>
+                      </button>
+                      {item.kind === 'tapd_card' && item.sourceCard?.userId === user?.id && (
+                        <button
+                          type="button"
+                          className="list-mode-tag-item__settings"
+                          title="设置 TAPD 卡片"
+                          aria-label={`设置 ${item.name}`}
+                          onClick={() => handleOpenCardModal(item.sourceCard)}
+                        >
+                          ⚙
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </aside>
+
+              <section className="list-mode-pane list-mode-pane--todos">
+                <div className="list-mode-pane-header">
+                  <div className="list-mode-quick-create">
                     <input
-                      className="card-quick-input"
-                      value={quickTodoDraft}
-                      placeholder="输入待办，回车创建"
+                      type="text"
+                      className="list-mode-quick-create__input"
+                      value={listQuickCreateDraft}
+                      placeholder={
+                        selectedListFilterId.startsWith('tapd:')
+                          ? 'TAPD 列表为只读视图，请在卡片设置中调整筛选条件'
+                          : selectedListFilterId === 'all'
+                          ? '快速新建待办，输入后按回车'
+                          : `在“${selectedListFilterItem?.name || ''}”下快速新建待办，输入后按回车`
+                      }
                       maxLength={500}
-                      disabled={quickCreatingCardId === card.id}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onFocus={() => setFocusedQuickInputCardId(card.id)}
-                      onBlur={() => {
-                        setFocusedQuickInputCardId((prev) => (prev === card.id ? null : prev));
-                      }}
-                      onChange={(e) => handleChangeQuickTodoDraft(card.id, e.target.value)}
+                      disabled={createTodoMutation.isPending || selectedListFilterId.startsWith('tapd:')}
+                      onChange={(e) => setListQuickCreateDraft(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                           e.preventDefault();
-                          e.stopPropagation();
-                          handleQuickCreateTodo(card);
-                          e.currentTarget.blur();
-                          return;
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setQuickTodoDraftByCardId((prev) => ({
-                            ...prev,
-                            [card.id]: '',
-                          }));
-                          e.currentTarget.blur();
+                          handleQuickCreateListTodo();
                         }
                       }}
                     />
+                  </div>
+                </div>
+                <div className="list-mode-pane-body list-mode-todo-list">
+                  {filteredListTodoEntries.length === 0 ? (
+                    <div className="list-mode-empty">当前标签下暂无待办</div>
                   ) : (
-                    <div className="card-title">
-                      <span className="card-title-text">
-                        {card.name}{card.cardType === 'shared' ? ' · 共享' : ''}
-                      </span>
-                      <span className="count">{visibleCardTodos.length}</span>
-                    </div>
+                    filteredListTodoEntries.map((entry) => (
+                      <TodoCard
+                        key={entry.todo.id}
+                        todo={entry.todo}
+                        tags={entry.effectiveTags}
+                        currentUserId={user?.id}
+                        className={selectedListTodoEntry?.todo.id === entry.todo.id ? 'todo-item--selected' : undefined}
+                        headerAddon={(
+                          <div
+                            className={`list-mode-source-badge ${entry.sourceCard?.pluginType === 'tapd' ? 'tapd-badge' : ''}`}
+                          >
+                            {entry.sourceCard?.pluginType === 'tapd'
+                              ? `TAPD · ${entry.sourceCard.name}`
+                              : entry.sourceLabel}
+                          </div>
+                        )}
+                        onCardClick={() => setSelectedListTodoId(entry.todo.id)}
+                        onToggle={() => handleToggleTodo(entry.todo.id, entry.todo.status)}
+                        onEdit={() => {}}
+                        onDelete={() => handleDeleteTodo(entry.todo.id)}
+                        showToggle={entry.canToggle}
+                        canUpdateProgress={entry.canUpdateProgress}
+                        onOpenProgress={() => setSelectedListTodoId(entry.todo.id)}
+                        progressButtonTitle="在右侧查看进度"
+                      />
+                    ))
                   )}
-                  <div className="card-actions">
-                    {!isTapdCard && (
-                      <button
-                        className={`toggle-completed-btn ${showCompleted ? 'active' : ''}`}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleCompletedVisibility(card.id);
-                        }}
-                        title={showCompleted ? '隐藏已完成待办' : '显示已完成待办'}
-                      >
-                        {showCompleted ? '☑' : '☐'}
-                      </button>
-                    )}
-                    {canManageSharedTodos && (
-                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenTodoModal(undefined, card); }} title="添加待办">+</button>
-                    )}
-                    {isCardOwner && (
-                      <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleOpenCardModal(card); }}>✎</button>
-                    )}
-                    {isCardOwner && (
-                      <div
-                        className="card-action-menu-wrap"
-                        ref={openCardMenuId === card.id ? cardMenuRef : null}
-                      >
-                        <button
-                          className="card-actions__more-trigger"
-                          aria-haspopup="menu"
-                          aria-expanded={openCardMenuId === card.id}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenCardMenuId((prev) => (prev === card.id ? null : card.id));
-                          }}
-                        >
-                          更多
-                        </button>
-                        {openCardMenuId === card.id && (
-                          <div className="card-action-menu" role="menu" aria-label={`${card.name}更多操作`}>
-                            <button
-                              role="menuitem"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleArchiveCard(card.id);
-                              }}
+                </div>
+              </section>
+
+              <section className="list-mode-pane list-mode-pane--detail">
+                {!selectedListTodoEntry ? (
+                  <div className="list-mode-pane-body list-mode-detail-empty">
+                    选择一条待办后，可在这里查看详情、编辑内容和追加进度。
+                  </div>
+                ) : (
+                  selectedListTodoEntry.isExternal && selectedListTodoEntry.sourceCard?.pluginType === 'tapd' ? (
+                    <>
+                      <div className="list-mode-pane-header list-mode-detail-header">
+                        <div className="list-mode-detail-actions">
+                          {selectedListTodoEntry.todo.url && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => window.open(selectedListTodoEntry.todo.url, '_blank')}
                             >
-                              归档卡片
-                            </button>
-                            <button
-                              role="menuitem"
-                              className="danger"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteCard(card.id);
-                              }}
-                            >
-                              删除卡片
-                            </button>
+                              打开原链接
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="list-mode-pane-body list-mode-tapd-detail-body">
+                        {selectedTapdDetailViewUrl ? (
+                          <iframe
+                            key={selectedListTodoEntry.todo.id}
+                            className="list-mode-tapd-iframe"
+                            src={selectedTapdDetailViewUrl}
+                            title={selectedListTodoEntry.todo.content}
+                          />
+                        ) : (
+                          <div className="list-mode-detail-empty">
+                            当前 TAPD 待办暂不支持生成同源详情页，请使用“打开原链接”查看。
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
-                <div className="card-body">
-                  {visibleCardTodos.map((todo: Todo) => (
-                    <TodoCard
-                      key={todo.id}
-                      todo={todo}
-                      tags={tags}
-                      currentUserId={user?.id}
-                      hiddenTagIds={cardTagIds}
-                      onToggle={() => handleToggleTodo(todo.id, todo.status)}
-                      showToggle={card.pluginType !== 'tapd'}
-                      onEdit={() => {
-                        if (card.pluginType === 'tapd') return;
-                        handleOpenTodoModal(todo, card);
-                      }}
-                      onDelete={() => handleDeleteTodo(todo.id)}
-                      canUpdateProgress={card.pluginType !== 'tapd'}
-                      onOpenProgress={() => handleOpenProgressModal(todo)}
-                    />
-                  ))}
-              </div>
+                    </>
+                  ) : (
+                  <>
+                    <div className="list-mode-pane-header list-mode-detail-header">
+                      <div className="list-mode-detail-actions">
+                        {selectedListTodoEntry.todo.url && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => window.open(selectedListTodoEntry.todo.url, '_blank')}
+                          >
+                            打开原链接
+                          </Button>
+                        )}
+                        {selectedListTodoEntry.canEdit && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={handleSaveListDetail}
+                            disabled={updateTodoMutation.isPending}
+                          >
+                            {updateTodoMutation.isPending ? '保存详情中...' : '保存详情'}
+                          </Button>
+                        )}
+                        {selectedListTodoEntry.canUpdateProgress && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => handleOpenProgressModal(selectedListTodoEntry.todo)}
+                          >
+                            新增进度
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="list-mode-pane-body list-mode-detail-body">
+                      <label className="list-mode-field">
+                        <textarea
+                          className="goal-input list-mode-detail-textarea"
+                          value={listDetailContent}
+                          maxLength={2000}
+                          disabled={!selectedListTodoEntry.canEdit || updateTodoMutation.isPending}
+                          onChange={(e) => setListDetailContent(e.target.value)}
+                        />
+                      </label>
+
+                      <div className="list-mode-detail-grid">
+                        <label className="list-mode-field">
+                          <span>截止时间</span>
+                          <input
+                            className="goal-input report-date-input"
+                            type="datetime-local"
+                            value={listDetailDueAt}
+                            disabled={!selectedListTodoEntry.canEdit || updateTodoMutation.isPending}
+                            onChange={(e) => setListDetailDueAt(e.target.value)}
+                          />
+                        </label>
+                        <label className="list-mode-field">
+                          <span>执行时间</span>
+                          <input
+                            className="goal-input report-date-input"
+                            type="datetime-local"
+                            value={listDetailExecuteAt}
+                            disabled={!selectedListTodoEntry.canEdit || updateTodoMutation.isPending}
+                            onChange={(e) => setListDetailExecuteAt(e.target.value)}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="list-mode-field">
+                        <span>标签</span>
+                        <div className="tag-selector list-mode-tag-selector">
+                          {(Array.isArray(tags) ? tags : []).map((tag) => {
+                            const isSelected = listDetailTagIds.includes(tag.id);
+                            const isDisabled = selectedListTodoEntry.isExternal || selectedListTodoEntry.sourceCard?.cardType === 'shared';
+                            return (
+                              <button
+                                key={tag.id}
+                                type="button"
+                                className={`tag-option ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                                onClick={() => handleToggleListDetailTag(tag.id)}
+                                disabled={isDisabled}
+                              >
+                                {tag.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="progress-history list-mode-progress-section">
+                        <div className="progress-history-title">进度列表</div>
+                        {selectedTodoProgressEntries.length === 0 ? (
+                          <div className="progress-history-empty">暂无记录</div>
+                        ) : (
+                          selectedTodoProgressEntries.map((entry) => (
+                            <div key={entry.id} className="progress-history-item">
+                              <div className="progress-history-time">
+                                {new Date(entry.createdAt).toLocaleString('zh-CN')}
+                              </div>
+                              <div className="progress-history-content">{entry.content}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                  )
+                )}
+              </section>
             </div>
-                );
-              })()}
-            </div>
-          ))}
-        </GridLayoutComponent>
-        </div>
+          </section>
+        )}
       </main>
+
+      {showViewModeModal && (
+        <div className="overlay open" onClick={() => setShowViewModeModal(false)}>
+          <div className="modal list-view-mode-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">切换首页视图</div>
+              <button className="modal-close" onClick={() => setShowViewModeModal(false)}>×</button>
+            </div>
+            <div className="modal-body list-view-mode-modal__body">
+              <button
+                type="button"
+                className={`list-view-mode-option ${viewMode === 'board' ? 'active' : ''}`}
+                onClick={() => {
+                  setViewMode('board');
+                  setShowViewModeModal(false);
+                }}
+              >
+                <span className="list-view-mode-option__title">卡片模式</span>
+                <span className="list-view-mode-option__desc">保持当前看板布局和拖拽卡片方式。</span>
+              </button>
+              <button
+                type="button"
+                className={`list-view-mode-option ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => {
+                  setViewMode('list');
+                  setShowViewModeModal(false);
+                }}
+              >
+                <span className="list-view-mode-option__title">列表模式</span>
+                <span className="list-view-mode-option__desc">按标签浏览待办，并在右侧直接查看详情与进度。</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showTodoModal && (
         <TodoModal

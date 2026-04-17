@@ -29,6 +29,24 @@ export interface TapdBug {
   version: string;
 }
 
+export interface TapdDetailPayload {
+  kind: 'story' | 'bug';
+  workspaceId: string;
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  owner: string;
+  ownerNames: string[];
+  created: string;
+  modified: string;
+  url: string;
+  iterationName?: string;
+  version?: string;
+  priority?: string;
+  severity?: string;
+}
+
 function splitTapdOwnerText(value: string): string[] {
   const normalized = String(value || '').trim();
   if (!normalized) {
@@ -99,6 +117,61 @@ function extractTapdOwnerNames(item: Record<string, unknown>): string[] {
   );
 }
 
+function normalizeTapdDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeTapdDisplayValue(item))
+      .filter(Boolean)
+      .join(' / ')
+      .trim();
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const preferredCandidates = [
+      record.name,
+      record.title,
+      record.label,
+      record.text,
+      record.value,
+      record.display_name,
+      record.iteration_name,
+      record.version_name,
+      record.release_name,
+      record.priority_name,
+      record.severity_name,
+    ];
+
+    for (const candidate of preferredCandidates) {
+      const normalized = normalizeTapdDisplayValue(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return '';
+}
+
+function pickFirstTapdText(item: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const normalized = normalizeTapdDisplayValue(item[key]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
 export interface TapdProject {
   id: string;
   name: string;
@@ -156,7 +229,66 @@ export class TapdService {
   private doneBugStatusesCache = new Map<string, Set<string>>();
   private storyStatusOptionsCache = new Map<string, Record<string, string>>();
   private bugStatusOptionsCache = new Map<string, Record<string, string>>();
+  private storyFieldsInfoCache = new Map<string, Record<string, unknown>>();
+  private bugFieldsInfoCache = new Map<string, Record<string, unknown>>();
   private workspaceUserAccountMapCache = new Map<string, Map<string, string>>();
+
+  private resolveTapdOptionLabel(value: unknown, options: Record<string, string>): string {
+    const normalizedValue = normalizeTapdDisplayValue(value);
+    if (!normalizedValue) {
+      return '';
+    }
+
+    return options[normalizedValue] || options[normalizedValue.toLowerCase()] || normalizedValue;
+  }
+
+  private extractTapdFieldOptions(
+    fieldsInfo: Record<string, unknown>,
+    fieldKeys: string[],
+  ): Record<string, string> {
+    for (const fieldKey of fieldKeys) {
+      const fieldInfo = fieldsInfo[fieldKey];
+      if (!fieldInfo || typeof fieldInfo !== 'object') {
+        continue;
+      }
+
+      const fieldRecord = fieldInfo as Record<string, unknown>;
+      const candidateOptions =
+        fieldRecord.options ??
+        fieldRecord.value_options ??
+        fieldRecord.enum_options ??
+        fieldRecord.select_options ??
+        {};
+      const normalizedOptions = this.normalizeStatusOptions(candidateOptions);
+      if (Object.keys(normalizedOptions).length > 0) {
+        return normalizedOptions;
+      }
+    }
+
+    return {};
+  }
+
+  private async getStoryFieldsInfo(workspaceId: string): Promise<Record<string, unknown>> {
+    if (this.storyFieldsInfoCache.has(workspaceId)) {
+      return this.storyFieldsInfoCache.get(workspaceId) || {};
+    }
+
+    const response = await this.client.get(`/stories/get_fields_info?workspace_id=${workspaceId}`);
+    const fieldsInfo = (response.data?.data ?? response.data ?? {}) as Record<string, unknown>;
+    this.storyFieldsInfoCache.set(workspaceId, fieldsInfo);
+    return fieldsInfo;
+  }
+
+  private async getBugFieldsInfo(workspaceId: string): Promise<Record<string, unknown>> {
+    if (this.bugFieldsInfoCache.has(workspaceId)) {
+      return this.bugFieldsInfoCache.get(workspaceId) || {};
+    }
+
+    const response = await this.client.get(`/bugs/get_fields_info?workspace_id=${workspaceId}`);
+    const fieldsInfo = (response.data?.data ?? response.data ?? {}) as Record<string, unknown>;
+    this.bugFieldsInfoCache.set(workspaceId, fieldsInfo);
+    return fieldsInfo;
+  }
 
   private async getWorkspaceUserAccountMap(workspaceId: string): Promise<Map<string, string>> {
     if (this.workspaceUserAccountMapCache.has(workspaceId)) {
@@ -227,18 +359,8 @@ export class TapdService {
       return this.storyStatusOptionsCache.get(workspaceId) || {};
     }
 
-    const response = await this.client.get(`/stories/get_fields_info?workspace_id=${workspaceId}`);
-    const statusOptions = response.data?.data?.status?.options || {};
-    const normalizedOptions: Record<string, string> = {};
-
-    Object.entries(statusOptions).forEach(([code, label]) => {
-      const key = String(code || '').trim();
-      const value = String(label || '').trim();
-      if (!key || !value) return;
-      normalizedOptions[key] = value;
-      normalizedOptions[key.toLowerCase()] = value;
-    });
-
+    const fieldsInfo = await this.getStoryFieldsInfo(workspaceId);
+    const normalizedOptions = this.extractTapdFieldOptions(fieldsInfo, ['status']);
     this.storyStatusOptionsCache.set(workspaceId, normalizedOptions);
     return normalizedOptions;
   }
@@ -291,14 +413,8 @@ export class TapdService {
     let normalizedOptions: Record<string, string> = {};
 
     try {
-      const response = await this.client.get(`/bugs/get_fields_info?workspace_id=${workspaceId}`);
-      const fieldsInfo = response.data?.data ?? response.data ?? {};
-      const candidateOptions =
-        fieldsInfo?.status?.options ??
-        fieldsInfo?.bug_status?.options ??
-        fieldsInfo?.status_options ??
-        {};
-      normalizedOptions = this.normalizeStatusOptions(candidateOptions);
+      const fieldsInfo = await this.getBugFieldsInfo(workspaceId);
+      normalizedOptions = this.extractTapdFieldOptions(fieldsInfo, ['status', 'bug_status', 'status_options']);
     } catch {
       this.logger.warn(`[tapd-bugs-status] failed to load status options, workspaceId=${workspaceId}`);
     }
@@ -423,6 +539,36 @@ export class TapdService {
         allItems.map((item: any) => [String(item.id || item.story_id || item.bug_id), item]),
       ).values(),
     );
+  }
+
+  private extractTapdItems(rawPayload: unknown, wrapperKey: 'Story' | 'Bug'): any[] {
+    const rawData = rawPayload && typeof rawPayload === 'object' && 'data' in (rawPayload as Record<string, unknown>)
+      ? (rawPayload as { data?: unknown }).data
+      : rawPayload;
+    const items = Array.isArray(rawData) ? rawData : [rawData];
+
+    return items
+      .map((item: any) => item?.[wrapperKey] || item)
+      .filter((item: any) => item && (item.id || item.story_id || item.bug_id));
+  }
+
+  private async fetchTapdItemById(
+    endpoint: string,
+    wrapperKey: 'Story' | 'Bug',
+    workspaceId: string,
+    itemId: string,
+    fields: string,
+  ): Promise<Record<string, unknown> | null> {
+    const response = await this.client.get(endpoint, {
+      params: {
+        workspace_id: workspaceId,
+        id: itemId,
+        fields,
+      },
+    });
+    const items = this.extractTapdItems(response.data, wrapperKey);
+    const matchedItem = items.find((item: any) => String(item.id || item.story_id || item.bug_id) === itemId);
+    return (matchedItem || items[0] || null) as Record<string, unknown> | null;
   }
 
   private readCredentials() {
@@ -631,6 +777,75 @@ export class TapdService {
     }
   }
 
+  async fetchStoryDetail(workspaceId: string, storyId: string): Promise<TapdDetailPayload | null> {
+    if (!this.client) {
+      throw new Error('TAPD client not initialized. Please set config first.');
+    }
+
+    try {
+      const item = await this.fetchTapdItemById(
+        '/stories',
+        'Story',
+        workspaceId,
+        storyId,
+        'id,story_id,name,title,description,status,owner,owner_name,owner_names,created,modified,url,iteration,iteration_id,iteration_name,current_iteration,current_iteration_name,release,release_id,release_name,version,version_id,version_name,priority,priority_name,severity,severity_name,story_type,story_type_name',
+      );
+
+      if (!item) {
+        return null;
+      }
+
+      const rawStatus = String(item.status || '').trim();
+      const statusLabelMap = await this.getStoryStatusOptions(workspaceId);
+      const storyFieldsInfo = await this.getStoryFieldsInfo(workspaceId);
+      const ownerNames = extractTapdOwnerNames(item);
+      const iterationOptions = this.extractTapdFieldOptions(storyFieldsInfo, ['iteration_id']);
+      const versionOptions = this.extractTapdFieldOptions(storyFieldsInfo, ['version', 'version_id', 'release_id']);
+      const priorityOptions = this.extractTapdFieldOptions(storyFieldsInfo, ['priority_label', 'priority']);
+      const severityOptions = this.extractTapdFieldOptions(storyFieldsInfo, ['severity']);
+      const iterationName = pickFirstTapdText(item, [
+        'iteration_name',
+        'current_iteration_name',
+      ]) || this.resolveTapdOptionLabel(item.iteration ?? item.current_iteration ?? item.iteration_id, iterationOptions);
+      const version = pickFirstTapdText(item, [
+        'version_name',
+        'release_name',
+      ]) || this.resolveTapdOptionLabel(item.version ?? item.version_id ?? item.release ?? item.release_id, versionOptions);
+      const priority = pickFirstTapdText(item, [
+        'priority_label',
+        'priority_name',
+      ]) || this.resolveTapdOptionLabel(item.priority, priorityOptions);
+      const severity = pickFirstTapdText(item, [
+        'severity_name',
+      ]) || this.resolveTapdOptionLabel(item.severity, severityOptions);
+
+      return {
+        kind: 'story',
+        workspaceId,
+        id: String(item.id || item.story_id || storyId),
+        title: String(item.name || item.title || ''),
+        description: String(item.description || ''),
+        status: statusLabelMap[rawStatus] || statusLabelMap[rawStatus.toLowerCase()] || rawStatus,
+        owner: ownerNames.join(' ') || String(item.owner_name || ''),
+        ownerNames,
+        created: String(item.created || ''),
+        modified: String(item.modified || ''),
+        url: String(item.url || `https://www.tapd.cn/tapd_fe/${workspaceId}/story/detail/${storyId}`),
+        iterationName,
+        version,
+        priority,
+        severity,
+      };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401) {
+        throw new UnauthorizedException('TAPD authentication failed (401). Please verify TAPD_API_USER/TAPD_API_TOKEN in backend .env.');
+      }
+      console.error('Failed to fetch TAPD story detail:', error);
+      return null;
+    }
+  }
+
   async fetchBugs(params: FetchBugsParams): Promise<TapdBug[]> {
     if (!this.client) {
       throw new Error('TAPD client not initialized. Please set config first.');
@@ -746,6 +961,76 @@ export class TapdService {
       }
       console.error('Failed to fetch bugs:', error);
       return [];
+    }
+  }
+
+  async fetchBugDetail(workspaceId: string, bugId: string): Promise<TapdDetailPayload | null> {
+    if (!this.client) {
+      throw new Error('TAPD client not initialized. Please set config first.');
+    }
+
+    try {
+      const item = await this.fetchTapdItemById(
+        '/bugs',
+        'Bug',
+        workspaceId,
+        bugId,
+        'id,bug_id,title,description,status,current_owner,current_owner_name,current_owner_names,created,modified,url,iteration,iteration_id,iteration_name,current_iteration,current_iteration_name,version,version_id,version_name,release,release_id,release_name,priority,priority_name,severity,severity_name',
+      );
+
+      if (!item) {
+        return null;
+      }
+
+      const rawStatus = String(item.status || '').trim();
+      const bugStatusLabelMap = await this.getBugStatusOptions(workspaceId);
+      const bugFieldsInfo = await this.getBugFieldsInfo(workspaceId);
+      const ownerNames = extractTapdOwnerNames(item);
+      const resolvedBugId = String(item.bug_id || item.id || bugId);
+      const iterationOptions = this.extractTapdFieldOptions(bugFieldsInfo, ['iteration_id']);
+      const versionOptions = this.extractTapdFieldOptions(bugFieldsInfo, ['version', 'version_id', 'release_id']);
+      const priorityOptions = this.extractTapdFieldOptions(bugFieldsInfo, ['priority_label', 'priority']);
+      const severityOptions = this.extractTapdFieldOptions(bugFieldsInfo, ['severity']);
+      const iterationName = pickFirstTapdText(item, [
+        'iteration_name',
+        'current_iteration_name',
+      ]) || this.resolveTapdOptionLabel(item.iteration ?? item.current_iteration ?? item.iteration_id, iterationOptions);
+      const version = pickFirstTapdText(item, [
+        'version_name',
+        'release_name',
+      ]) || this.resolveTapdOptionLabel(item.version ?? item.version_id ?? item.release ?? item.release_id, versionOptions);
+      const priority = pickFirstTapdText(item, [
+        'priority_label',
+        'priority_name',
+      ]) || this.resolveTapdOptionLabel(item.priority, priorityOptions);
+      const severity = pickFirstTapdText(item, [
+        'severity_name',
+      ]) || this.resolveTapdOptionLabel(item.severity, severityOptions);
+
+      return {
+        kind: 'bug',
+        workspaceId,
+        id: String(item.id || item.bug_id || bugId),
+        title: String(item.title || ''),
+        description: String(item.description || ''),
+        status: bugStatusLabelMap[rawStatus] || bugStatusLabelMap[rawStatus.toLowerCase()] || rawStatus,
+        owner: ownerNames.join(' ') || String(item.current_owner_name || ''),
+        ownerNames,
+        created: String(item.created || ''),
+        modified: String(item.modified || ''),
+        url: String(item.url || `https://www.tapd.cn/tapd_fe/${workspaceId}/bug/detail/${resolvedBugId}`),
+        iterationName,
+        version,
+        priority,
+        severity,
+      };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401) {
+        throw new UnauthorizedException('TAPD authentication failed (401). Please verify TAPD_API_USER/TAPD_API_TOKEN in backend .env.');
+      }
+      console.error('Failed to fetch TAPD bug detail:', error);
+      return null;
     }
   }
 

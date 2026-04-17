@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Todo, Tag } from '../types';
 import './TodoCard.css';
 
@@ -14,6 +15,9 @@ interface TodoCardProps {
   hiddenTagIds?: string[];
   readOnly?: boolean;
   progressButtonTitle?: string;
+  className?: string;
+  onCardClick?: () => void;
+  headerAddon?: ReactNode;
 }
 
 export function TodoCard({
@@ -27,6 +31,9 @@ export function TodoCard({
   hiddenTagIds = [],
   readOnly = false,
   progressButtonTitle = '更新进度',
+  className,
+  onCardClick,
+  headerAddon,
 }: TodoCardProps) {
   const isDone = todo.status === 'done' || todo.status === 'completed';
   const hiddenTagIdSet = new Set(hiddenTagIds);
@@ -80,8 +87,12 @@ export function TodoCard({
 
   return (
     <div
-      className={`todo-item ${isDone ? 'done' : ''} ${readOnly ? 'readonly' : ''}`}
+      className={`todo-item ${isDone ? 'done' : ''} ${readOnly ? 'readonly' : ''} ${className || ''}`.trim()}
       onClick={() => {
+        if (onCardClick) {
+          onCardClick();
+          return;
+        }
         if (todo.url) {
           window.open(todo.url, '_blank');
           return;
@@ -125,6 +136,7 @@ export function TodoCard({
           <div className={`todo-text ${isDone ? 'done' : ''}`}>
             {todo.content}
           </div>
+          {headerAddon}
           {creatorBadge && <div className="todo-creator-badge">{creatorBadge}</div>}
           {handlerLabel && <div className="todo-handler-list">{handlerLabel}</div>}
           <div className="todo-meta">
