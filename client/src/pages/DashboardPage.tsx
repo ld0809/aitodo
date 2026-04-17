@@ -170,6 +170,78 @@ function buildTapdDetailViewUrl(url?: string | null): string | null {
   return `${TAPD_DETAIL_VIEW_BASE_URL}?${query.toString()}`;
 }
 
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M4.5 3.5h8.379l2.621 2.621V16.5h-11z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 3.5h5.5v4H7z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 12.25h6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M10 4.5v11M4.5 10h11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M11.5 4.5h4v4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 11l6.5-6.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+      <path
+        d="M15.5 10.5v4a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function getStoredDashboardViewMode(): DashboardViewMode {
   if (typeof window === 'undefined') {
     return 'board';
@@ -281,6 +353,7 @@ export function DashboardPage() {
   const [listDetailDueAt, setListDetailDueAt] = useState('');
   const [listDetailExecuteAt, setListDetailExecuteAt] = useState('');
   const [listDetailTagIds, setListDetailTagIds] = useState<string[]>([]);
+  const [showListDetailFloatingActions, setShowListDetailFloatingActions] = useState(false);
   const CARD_H = 3;
   const CARD_MIN_H = 2;
   const CARD_W = 1;
@@ -1561,7 +1634,11 @@ export function DashboardPage() {
                 </div>
               </section>
 
-              <section className="list-mode-pane list-mode-pane--detail">
+              <section
+                className="list-mode-pane list-mode-pane--detail"
+                onMouseEnter={() => setShowListDetailFloatingActions(true)}
+                onMouseLeave={() => setShowListDetailFloatingActions(false)}
+              >
                 {!selectedListTodoEntry ? (
                   <div className="list-mode-pane-body list-mode-detail-empty">
                     选择一条待办后，可在这里查看详情、编辑内容和追加进度。
@@ -1569,19 +1646,6 @@ export function DashboardPage() {
                 ) : (
                   selectedListTodoEntry.isExternal && selectedListTodoEntry.sourceCard?.pluginType === 'tapd' ? (
                     <>
-                      <div className="list-mode-pane-header list-mode-detail-header">
-                        <div className="list-mode-detail-actions">
-                          {selectedListTodoEntry.todo.url && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => window.open(selectedListTodoEntry.todo.url, '_blank')}
-                            >
-                              打开原链接
-                            </Button>
-                          )}
-                        </div>
-                      </div>
                       <div className="list-mode-pane-body list-mode-tapd-detail-body">
                         {selectedTapdDetailViewUrl ? (
                           <iframe
@@ -1599,38 +1663,6 @@ export function DashboardPage() {
                     </>
                   ) : (
                   <>
-                    <div className="list-mode-pane-header list-mode-detail-header">
-                      <div className="list-mode-detail-actions">
-                        {selectedListTodoEntry.todo.url && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => window.open(selectedListTodoEntry.todo.url, '_blank')}
-                          >
-                            打开原链接
-                          </Button>
-                        )}
-                        {selectedListTodoEntry.canEdit && (
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={handleSaveListDetail}
-                            disabled={updateTodoMutation.isPending}
-                          >
-                            {updateTodoMutation.isPending ? '保存详情中...' : '保存详情'}
-                          </Button>
-                        )}
-                        {selectedListTodoEntry.canUpdateProgress && (
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={() => handleOpenProgressModal(selectedListTodoEntry.todo)}
-                          >
-                            新增进度
-                          </Button>
-                        )}
-                      </div>
-                    </div>
                     <div className="list-mode-pane-body list-mode-detail-body">
                       <label className="list-mode-field">
                         <textarea
@@ -1710,6 +1742,49 @@ export function DashboardPage() {
           </section>
         )}
       </main>
+
+      {viewMode === 'list' && selectedListTodoEntry && (
+        <div
+          className={`list-mode-screen-floating-actions ${showListDetailFloatingActions ? 'visible' : ''}`}
+          onMouseEnter={() => setShowListDetailFloatingActions(true)}
+          onMouseLeave={() => setShowListDetailFloatingActions(false)}
+        >
+          {selectedListTodoEntry.todo.url && (
+            <Button
+              variant="secondary"
+              className="list-mode-fab list-mode-fab--secondary"
+              onClick={() => window.open(selectedListTodoEntry.todo.url, '_blank')}
+              title="打开原链接"
+              aria-label="打开原链接"
+            >
+              <ExternalLinkIcon />
+            </Button>
+          )}
+          {!selectedListTodoEntry.isExternal && selectedListTodoEntry.canEdit && (
+            <Button
+              variant="primary"
+              className="list-mode-fab"
+              onClick={handleSaveListDetail}
+              disabled={updateTodoMutation.isPending}
+              title={updateTodoMutation.isPending ? '保存详情中' : '保存详情'}
+              aria-label={updateTodoMutation.isPending ? '保存详情中' : '保存详情'}
+            >
+              <SaveIcon />
+            </Button>
+          )}
+          {!selectedListTodoEntry.isExternal && selectedListTodoEntry.canUpdateProgress && (
+            <Button
+              variant="primary"
+              className="list-mode-fab"
+              onClick={() => handleOpenProgressModal(selectedListTodoEntry.todo)}
+              title="新增进度"
+              aria-label="新增进度"
+            >
+              <PlusIcon />
+            </Button>
+          )}
+        </div>
+      )}
 
       {showViewModeModal && (
         <div className="overlay open" onClick={() => setShowViewModeModal(false)}>
