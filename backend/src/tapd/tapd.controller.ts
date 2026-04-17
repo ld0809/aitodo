@@ -248,6 +248,25 @@ function formatTapdDescription(value: string): string {
   return hasHtmlTags ? sanitizeTapdHtml(normalized) : renderMarkdown(normalized);
 }
 
+function buildTapdStatusOptions(statusMap: Record<string, string>) {
+  const uniqueOptions = new Map<string, { value: string; label: string }>();
+
+  Object.entries(statusMap).forEach(([rawValue, rawLabel]) => {
+    const value = String(rawValue || '').trim();
+    const label = String(rawLabel || rawValue || '').trim();
+    if (!value || !label) {
+      return;
+    }
+
+    const dedupeKey = value.toLowerCase();
+    if (!uniqueOptions.has(dedupeKey)) {
+      uniqueOptions.set(dedupeKey, { value, label });
+    }
+  });
+
+  return Array.from(uniqueOptions.values()).sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'));
+}
+
 function renderTapdDetailHtml(detail: TapdDetailPayload): string {
   const metaPairs = [
     ['类型', detail.kind === 'bug' ? '缺陷' : '需求'],
@@ -610,6 +629,34 @@ export class TapdController {
     // Set config for tapdService to use
     this.tapdService.setConfig(config.apiUrl, wid);
     return this.tapdService.fetchUsers(wid, projectId);
+  }
+
+  @Get('projects/:projectId/status-options')
+  async getStatusOptions(
+    @Param('projectId') projectId: string,
+    @Query('workspaceId') workspaceId?: string,
+  ) {
+    const config = await this.tapdConfigService.findDefault();
+
+    if (!config) {
+      throw new NotFoundException('No TAPD configuration found. Please configure TAPD first.');
+    }
+
+    if (!projectId) {
+      throw new BadRequestException('projectId is required');
+    }
+
+    const wid = workspaceId || config.workspaceId;
+    this.tapdService.setConfig(config.apiUrl, wid);
+    const [requirementStatusMap, bugStatusMap] = await Promise.all([
+      this.tapdService.getStoryStatusLabelMap(wid),
+      this.tapdService.getBugStatusLabelMap(wid),
+    ]);
+
+    return {
+      requirementStatuses: buildTapdStatusOptions(requirementStatusMap),
+      bugStatuses: buildTapdStatusOptions(bugStatusMap),
+    };
   }
 
   @Get('projects/:projectId/versions')

@@ -251,6 +251,20 @@
   min-width: 0;
 }
 
+.tapd-status-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tapd-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .owner-selected-list {
   display: flex;
   flex-wrap: wrap;
@@ -280,6 +294,15 @@
 }
 
 @media (max-width: 640px) {
+  .tapd-status-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tapd-status-actions {
+    justify-content: flex-end;
+  }
+
   .owner-options {
     grid-template-columns: 1fr;
   }

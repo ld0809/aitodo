@@ -20,6 +20,10 @@ export interface TapdFetchOptions {
   versionId?: string;
   owners?: string[];
   ownerIds?: string[];
+  requirementStatuses?: string[];
+  bugStatuses?: string[];
+  requirementStatus?: string;
+  bugStatus?: string;
   status?: string;
 }
 
@@ -35,6 +39,22 @@ function parseWorkspaceIds(raw?: string): string[] {
 
 function dedupeWorkspaceIds(ids: string[]): string[] {
   return Array.from(new Set(ids.map((item) => item.trim()).filter(Boolean)));
+}
+
+function normalizeStatusFilter(value?: string | string[]): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const values = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(/[\s,，]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  const normalized = Array.from(new Set(values.map((item) => String(item || '').trim()).filter(Boolean)));
+  return normalized.length > 0 ? normalized.join(',') : undefined;
 }
 
 function resolveWorkspaceIds(config: TapdPluginConfig): string[] {
@@ -159,6 +179,12 @@ export class TapdPlugin implements DataSourcePlugin {
     const workspaceItems = await Promise.all(
       workspaceIds.map(async (workspaceId) => {
         const projectId = options.projectId || workspaceId;
+        const requirementStatus = normalizeStatusFilter(
+          options.requirementStatuses ?? options.requirementStatus ?? options.status,
+        );
+        const bugStatus = normalizeStatusFilter(
+          options.bugStatuses ?? options.bugStatus ?? options.status,
+        );
         const currentItems: PluginItem[] = [];
 
         if (contentType === 'all' || contentType === 'requirements') {
@@ -170,7 +196,7 @@ export class TapdPlugin implements DataSourcePlugin {
             iterationId: options.iterationId,
             owners: options.owners,
             ownerIds: options.ownerIds,
-            status: options.status,
+            status: requirementStatus,
           });
           console.log('[TAPD Plugin] Requirements fetched:', requirements.length, 'items, workspaceId:', workspaceId);
 
@@ -189,7 +215,7 @@ export class TapdPlugin implements DataSourcePlugin {
             versionId: options.versionId,
             owners: options.owners,
             ownerIds: options.ownerIds,
-            status: options.status,
+            status: bugStatus,
           });
           console.log('[TAPD Plugin] Bugs fetched:', bugs.length, 'items, workspaceId:', workspaceId);
 

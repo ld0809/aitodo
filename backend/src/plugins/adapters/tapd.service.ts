@@ -172,6 +172,49 @@ function pickFirstTapdText(item: Record<string, unknown>, keys: string[]): strin
   return '';
 }
 
+export function normalizeTapdQueryValues(value?: string | string[]): string[] {
+  if (!value) {
+    return [];
+  }
+
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(/[,\uFF0C|]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  return Array.from(new Set(rawValues.map((item) => String(item || '').trim()).filter(Boolean)));
+}
+
+export function buildTapdUserFilter(value?: string | string[]): string | undefined {
+  const values = normalizeTapdQueryValues(value);
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  return `USER_OR<${values.join('|')}>`;
+}
+
+export function applyTapdStatusFilter(queryParams: Record<string, string>, status?: string | string[]) {
+  const values = normalizeTapdQueryValues(status);
+  if (values.length === 0) {
+    return;
+  }
+
+  const serializedValue = values.join('|');
+  if (values.some((item) => /[\u4e00-\u9fff]/.test(item))) {
+    queryParams.v_status = serializedValue;
+    return;
+  }
+
+  queryParams.status = serializedValue;
+}
+
 export interface TapdProject {
   id: string;
   name: string;
@@ -720,14 +763,13 @@ export class TapdService {
       const ownerFilters = preferredOwners.length > 0 ? preferredOwners : fallbackOwnerIds;
       if (ownerFilters.length > 0) {
         const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, ownerFilters);
-        if (ownerAccounts.length > 0) {
+        const ownerFilterValue = buildTapdUserFilter(ownerAccounts);
+        if (ownerFilterValue) {
           // TAPD stories owner filter expects `owner`, not `owner_id`.
-          queryParams['owner'] = ownerAccounts.join(',');
+          queryParams['owner'] = ownerFilterValue;
         }
       }
-      if (params.status) {
-        queryParams['status'] = params.status;
-      }
+      applyTapdStatusFilter(queryParams, params.status);
 
       this.logger.log(
         `[tapd-stories-query] workspaceId=${params.workspaceId} owner=${queryParams.owner ?? ''} source=${preferredOwners.length > 0 ? 'owners' : 'ownerIds'} params=${JSON.stringify(queryParams)}`,
@@ -871,14 +913,13 @@ export class TapdService {
       const ownerFilters = preferredOwners.length > 0 ? preferredOwners : fallbackOwnerIds;
       if (ownerFilters.length > 0) {
         const ownerAccounts = await this.resolveOwnerAccounts(params.workspaceId, ownerFilters);
-        if (ownerAccounts.length > 0) {
+        const ownerFilterValue = buildTapdUserFilter(ownerAccounts);
+        if (ownerFilterValue) {
           // TAPD bugs owner filter expects `current_owner`.
-          queryParams['current_owner'] = ownerAccounts.join(',');
+          queryParams['current_owner'] = ownerFilterValue;
         }
       }
-      if (params.status) {
-        queryParams['status'] = params.status;
-      }
+      applyTapdStatusFilter(queryParams, params.status);
 
       this.logger.log(
         `[tapd-bugs-query] workspaceId=${params.workspaceId} current_owner=${queryParams.current_owner ?? ''} source=${preferredOwners.length > 0 ? 'owners' : 'ownerIds'} params=${JSON.stringify(queryParams)}`,

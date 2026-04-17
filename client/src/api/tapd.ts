@@ -20,6 +20,11 @@ export interface TapdUser {
   nickname?: string;
 }
 
+export interface TapdStatusOption {
+  value: string;
+  label: string;
+}
+
 export interface TapdRequirement {
   id: string;
   story_id?: string;
@@ -74,6 +79,15 @@ export const getIterations = async (projectId: string): Promise<TapdIteration[]>
 export const getUsers = async (projectId: string): Promise<TapdUser[]> => {
   const { apiBaseUrl } = useTapdStore.getState();
   const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/users?workspaceId=' + projectId);
+  return response.data;
+};
+
+export const getStatusOptions = async (projectId: string): Promise<{
+  requirementStatuses: TapdStatusOption[];
+  bugStatuses: TapdStatusOption[];
+}> => {
+  const { apiBaseUrl } = useTapdStore.getState();
+  const response = await apiClient.get(apiBaseUrl + '/api/projects/' + projectId + '/status-options?workspaceId=' + projectId);
   return response.data;
 };
 

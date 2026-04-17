@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Card, Organization, OrganizationMember, Tag } from '../types';
 import type { CreateCardDto, UpdateCardDto } from '../api/cards';
 import { organizationsApi } from '../api/organizations';
-import { getUsers, type TapdUser } from '../api/tapd';
+import { getStatusOptions, getUsers, type TapdStatusOption, type TapdUser } from '../api/tapd';
 import { useAuthStore } from '../store/authStore';
 import { Button } from './ui/Button';
 import './Modal.css';
@@ -24,6 +24,37 @@ function normalizeEmail(email: string) {
 
 function parseWorkspaceIds(input: string): string[] {
   return [...new Set(input.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean))];
+}
+
+function parseTapdFilterValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
+  }
+
+  if (typeof value === 'string') {
+    return [...new Set(value.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean))];
+  }
+
+  return [];
+}
+
+function mergeTapdStatusOptions(optionGroups: TapdStatusOption[][]): TapdStatusOption[] {
+  const merged = new Map<string, TapdStatusOption>();
+
+  optionGroups.flat().forEach((option) => {
+    const value = String(option.value || '').trim();
+    const label = String(option.label || option.value || '').trim();
+    if (!value || !label) {
+      return;
+    }
+
+    const key = value.toLowerCase();
+    if (!merged.has(key)) {
+      merged.set(key, { value, label });
+    }
+  });
+
+  return Array.from(merged.values()).sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'));
 }
 
 type CardMode = 'personal' | 'shared' | 'tapd';
@@ -51,11 +82,16 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
 
   const [workspaceInput, setWorkspaceInput] = useState('');
   const [contentType, setContentType] = useState<'all' | 'requirements' | 'bugs'>('all');
+  const [requirementStatuses, setRequirementStatuses] = useState<string[]>([]);
+  const [bugStatuses, setBugStatuses] = useState<string[]>([]);
   const [iterationId, setIterationId] = useState('');
   const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [ownerNames, setOwnerNames] = useState<string[]>([]);
   const [tapdUsers, setTapdUsers] = useState<TapdUser[]>([]);
   const [userKeyword, setUserKeyword] = useState('');
+  const [requirementStatusOptions, setRequirementStatusOptions] = useState<TapdStatusOption[]>([]);
+  const [bugStatusOptions, setBugStatusOptions] = useState<TapdStatusOption[]>([]);
+  const [statusOptionsLoading, setStatusOptionsLoading] = useState(false);
 
   const cardType: 'personal' | 'shared' = cardMode === 'shared' ? 'shared' : 'personal';
   const pluginType: 'local_todo' | 'tapd' = cardMode === 'tapd' ? 'tapd' : 'local_todo';
@@ -90,20 +126,29 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
             workspaceId?: string;
             workspaceIds?: string[];
             contentType?: 'all' | 'requirements' | 'bugs';
+            requirementStatuses?: string[];
+            bugStatuses?: string[];
+            requirementStatus?: string | string[];
+            bugStatus?: string | string[];
             iterationId?: string;
             ownerIds?: string[];
             owners?: string[];
+            status?: string | string[];
           };
           const workspaceIds = Array.isArray(config.workspaceIds) ? config.workspaceIds : [];
           const workspaceText = workspaceIds.length > 0 ? workspaceIds.join(',') : (config.workspaceId || '');
           setWorkspaceInput(workspaceText);
           setContentType(config.contentType || 'all');
+          setRequirementStatuses(parseTapdFilterValues(config.requirementStatuses ?? config.requirementStatus ?? config.status));
+          setBugStatuses(parseTapdFilterValues(config.bugStatuses ?? config.bugStatus ?? config.status));
           setIterationId(config.iterationId || '');
           setOwnerIds(Array.isArray(config.ownerIds) ? config.ownerIds : []);
           setOwnerNames(Array.isArray(config.owners) ? config.owners : []);
         } catch {
           setWorkspaceInput('');
           setContentType('all');
+          setRequirementStatuses([]);
+          setBugStatuses([]);
           setIterationId('');
           setOwnerIds([]);
           setOwnerNames([]);
@@ -111,6 +156,8 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
       } else {
         setWorkspaceInput('');
         setContentType('all');
+        setRequirementStatuses([]);
+        setBugStatuses([]);
         setIterationId('');
         setOwnerIds([]);
         setOwnerNames([]);
@@ -134,11 +181,16 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
     setPendingOrganizationMemberIds([]);
     setWorkspaceInput('');
     setContentType('all');
+    setRequirementStatuses([]);
+    setBugStatuses([]);
     setIterationId('');
     setOwnerIds([]);
     setOwnerNames([]);
     setTapdUsers([]);
     setUserKeyword('');
+    setRequirementStatusOptions([]);
+    setBugStatusOptions([]);
+    setStatusOptionsLoading(false);
   }, [card]);
 
   useEffect(() => {
@@ -241,6 +293,66 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
       .catch(() => setTapdUsers([]));
   }, [isTapdCard, workspaceInput]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!isTapdCard) {
+      setRequirementStatusOptions([]);
+      setBugStatusOptions([]);
+      setStatusOptionsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const workspaceIds = parseWorkspaceIds(workspaceInput);
+    if (workspaceIds.length === 0) {
+      setRequirementStatusOptions([]);
+      setBugStatusOptions([]);
+      setRequirementStatuses([]);
+      setBugStatuses([]);
+      setStatusOptionsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setStatusOptionsLoading(true);
+    Promise.all(workspaceIds.map((workspaceId) => getStatusOptions(workspaceId)))
+      .then((responses) => {
+        if (cancelled) {
+          return;
+        }
+
+        const nextRequirementOptions = mergeTapdStatusOptions(
+          responses.map((response) => Array.isArray(response.requirementStatuses) ? response.requirementStatuses : []),
+        );
+        const nextBugOptions = mergeTapdStatusOptions(
+          responses.map((response) => Array.isArray(response.bugStatuses) ? response.bugStatuses : []),
+        );
+
+        setRequirementStatusOptions(nextRequirementOptions);
+        setBugStatusOptions(nextBugOptions);
+        setRequirementStatuses((prev) => prev.filter((item) => nextRequirementOptions.some((option) => option.value === item)));
+        setBugStatuses((prev) => prev.filter((item) => nextBugOptions.some((option) => option.value === item)));
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setRequirementStatusOptions([]);
+        setBugStatusOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStatusOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTapdCard, workspaceInput]);
+
   const filteredUsers = useMemo(() => {
     const keyword = userKeyword.trim().toLowerCase();
     if (!keyword) return tapdUsers;
@@ -253,6 +365,20 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
   const selectedUsers = useMemo(
     () => tapdUsers.filter((user) => ownerIds.includes(user.id)),
     [tapdUsers, ownerIds],
+  );
+  const selectedRequirementStatusOptions = useMemo(
+    () => requirementStatuses.map((value) => {
+      const matched = requirementStatusOptions.find((option) => option.value === value);
+      return matched || { value, label: value };
+    }),
+    [requirementStatuses, requirementStatusOptions],
+  );
+  const selectedBugStatusOptions = useMemo(
+    () => bugStatuses.map((value) => {
+      const matched = bugStatusOptions.find((option) => option.value === value);
+      return matched || { value, label: value };
+    }),
+    [bugStatuses, bugStatusOptions],
   );
 
   useEffect(() => {
@@ -295,6 +421,14 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
 
   const toggleOwner = (id: string) => {
     setOwnerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const toggleTapdStatus = (
+    value: string,
+    selectedValues: string[],
+    setSelectedValues: React.Dispatch<React.SetStateAction<string[]>>,
+  ) => {
+    setSelectedValues(selectedValues.includes(value) ? selectedValues.filter((item) => item !== value) : [...selectedValues, value]);
   };
 
   const toggleTag = (tagId: string) => {
@@ -403,6 +537,10 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
         workspaceId: workspaceIds[0],
         workspaceIds,
         contentType,
+        requirementStatuses: requirementStatuses.length > 0 ? requirementStatuses : undefined,
+        bugStatuses: bugStatuses.length > 0 ? bugStatuses : undefined,
+        requirementStatus: requirementStatuses.length > 0 ? requirementStatuses.join(',') : undefined,
+        bugStatus: bugStatuses.length > 0 ? bugStatuses.join(',') : undefined,
         iterationId: iterationId.trim() || undefined,
         ownerIds,
         owners: [...new Set(owners)],
@@ -424,7 +562,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
   };
 
   return (
-    <div className="overlay open" onClick={onClose}>
+    <div className="overlay open">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{card ? '编辑卡片' : '新建卡片'}</div>
@@ -553,6 +691,124 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
                     <option value="requirements">仅需求</option>
                     <option value="bugs">仅缺陷</option>
                   </select>
+                </div>
+
+                <div className="mb">
+                  <label>
+                    需求状态过滤 <span style={{ color: '#999' }}>(可选)</span>
+                  </label>
+                  <div className="owner-filter-box">
+                    <div className="tapd-status-toolbar">
+                      <span className="selection-muted">
+                        {statusOptionsLoading ? '状态加载中...' : `共 ${requirementStatusOptions.length} 个可选状态`}
+                      </span>
+                      <div className="tapd-status-actions">
+                        <button
+                          type="button"
+                          className="owner-action-btn"
+                          onClick={() => setRequirementStatuses(requirementStatusOptions.map((item) => item.value))}
+                          disabled={requirementStatusOptions.length === 0}
+                        >
+                          全选
+                        </button>
+                        <button
+                          type="button"
+                          className="owner-action-btn"
+                          onClick={() => setRequirementStatuses([])}
+                          disabled={requirementStatuses.length === 0}
+                        >
+                          清空
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedRequirementStatusOptions.length > 0 && (
+                      <div className="owner-selected-list">
+                        {selectedRequirementStatusOptions.map((item) => (
+                          <span
+                            key={item.value}
+                            className="owner-chip"
+                            onClick={() => toggleTapdStatus(item.value, requirementStatuses, setRequirementStatuses)}
+                          >
+                            {item.label} ×
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="owner-options">
+                      {requirementStatusOptions.map((item) => (
+                        <label key={item.value} className="owner-option">
+                          <input
+                            type="checkbox"
+                            checked={requirementStatuses.includes(item.value)}
+                            onChange={() => toggleTapdStatus(item.value, requirementStatuses, setRequirementStatuses)}
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                      {requirementStatusOptions.length === 0 && <div className="owner-empty">请输入有效 workspace ID 后自动加载</div>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb">
+                  <label>
+                    缺陷状态过滤 <span style={{ color: '#999' }}>(可选)</span>
+                  </label>
+                  <div className="owner-filter-box">
+                    <div className="tapd-status-toolbar">
+                      <span className="selection-muted">
+                        {statusOptionsLoading ? '状态加载中...' : `共 ${bugStatusOptions.length} 个可选状态`}
+                      </span>
+                      <div className="tapd-status-actions">
+                        <button
+                          type="button"
+                          className="owner-action-btn"
+                          onClick={() => setBugStatuses(bugStatusOptions.map((item) => item.value))}
+                          disabled={bugStatusOptions.length === 0}
+                        >
+                          全选
+                        </button>
+                        <button
+                          type="button"
+                          className="owner-action-btn"
+                          onClick={() => setBugStatuses([])}
+                          disabled={bugStatuses.length === 0}
+                        >
+                          清空
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedBugStatusOptions.length > 0 && (
+                      <div className="owner-selected-list">
+                        {selectedBugStatusOptions.map((item) => (
+                          <span
+                            key={item.value}
+                            className="owner-chip"
+                            onClick={() => toggleTapdStatus(item.value, bugStatuses, setBugStatuses)}
+                          >
+                            {item.label} ×
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="owner-options">
+                      {bugStatusOptions.map((item) => (
+                        <label key={item.value} className="owner-option">
+                          <input
+                            type="checkbox"
+                            checked={bugStatuses.includes(item.value)}
+                            onChange={() => toggleTapdStatus(item.value, bugStatuses, setBugStatuses)}
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                      {bugStatusOptions.length === 0 && <div className="owner-empty">请输入有效 workspace ID 后自动加载</div>}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mb">
