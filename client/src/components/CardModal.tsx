@@ -405,6 +405,7 @@ export function CardModal({ card, cards, tags, onSave, onCreateTag, onClose, isS
     if (matchedIds.length > 0) {
       setOwnerIds([...new Set(matchedIds)]);
     }
+    setOwnerNames([]);
   }, [tapdUsers, ownerIds, ownerNames]);
 
   const copySourceCards = useMemo(

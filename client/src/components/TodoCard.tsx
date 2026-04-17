@@ -81,6 +81,7 @@ export function TodoCard({
     ? todo.handlerNames.map((name) => String(name || '').trim()).filter(Boolean)
     : [];
   const handlerLabel = handlerNames.length > 0 ? `[${handlerNames.join(' ')}]` : null;
+  const showHeaderMetaRow = Boolean(headerAddon && handlerLabel) || Boolean(handlerLabel);
   const creatorBadge = todo.creatorUserId && todo.creatorUserId !== currentUserId
     ? `创建人：${todo.creatorName || '未知成员'}`
     : null;
@@ -136,10 +137,15 @@ export function TodoCard({
           <div className={`todo-text ${isDone ? 'done' : ''}`}>
             {todo.content}
           </div>
-          {headerAddon}
+          {showHeaderMetaRow && (
+            <div className="todo-header-meta">
+              {headerAddon}
+              {handlerLabel && <div className="todo-handler-list">{handlerLabel}</div>}
+            </div>
+          )}
           {creatorBadge && <div className="todo-creator-badge">{creatorBadge}</div>}
-          {handlerLabel && <div className="todo-handler-list">{handlerLabel}</div>}
           <div className="todo-meta">
+            {!showHeaderMetaRow && headerAddon}
             {visibleTags.map((tag) => (
               <span key={tag.id} className={`tag ${getTagClass(tag.name)}`}>
                 {tag.name}
