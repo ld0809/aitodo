@@ -1626,6 +1626,7 @@ export function DashboardPage() {
                         onDelete={() => handleDeleteTodo(entry.todo.id)}
                         showToggle={entry.canToggle}
                         canUpdateProgress={entry.canUpdateProgress}
+                        showProgressButton={false}
                         onOpenProgress={() => setSelectedListTodoId(entry.todo.id)}
                         progressButtonTitle="在右侧查看进度"
                       />

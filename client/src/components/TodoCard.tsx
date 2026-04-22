@@ -15,6 +15,7 @@ interface TodoCardProps {
   hiddenTagIds?: string[];
   readOnly?: boolean;
   progressButtonTitle?: string;
+  showProgressButton?: boolean;
   className?: string;
   onCardClick?: () => void;
   headerAddon?: ReactNode;
@@ -31,6 +32,7 @@ export function TodoCard({
   hiddenTagIds = [],
   readOnly = false,
   progressButtonTitle = '更新进度',
+  showProgressButton = true,
   className,
   onCardClick,
   headerAddon,
@@ -104,7 +106,7 @@ export function TodoCard({
       }}
     >
       <div className="todo-row">
-        {(showToggle || canUpdateProgress) && (
+        {(showToggle || (canUpdateProgress && showProgressButton)) && (
           <div className="todo-left">
             {showToggle && (
               <div
@@ -117,7 +119,7 @@ export function TodoCard({
                 {isDone && '✓'}
               </div>
             )}
-            {canUpdateProgress && (
+            {canUpdateProgress && showProgressButton && (
               <button
                 type="button"
                 className="progress-entry-btn"
