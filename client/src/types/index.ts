@@ -23,6 +23,7 @@ export interface OpenClawBinding {
   lastCompletedAt: string | null;
   lastError: string | null;
   channelCode: string;
+  accountId: string;
   wsUrl: string | null;
   docsUrl: string;
   pluginPackageName: string;

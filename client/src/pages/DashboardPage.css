@@ -8,6 +8,7 @@
 }
 
 .list-mode-shell {
+  min-height: max(560px, calc(100vh - 120px));
   border: 1px solid var(--border);
   border-radius: 22px;
   background:
@@ -20,7 +21,7 @@
   display: grid;
   grid-template-columns: 220px minmax(360px, 0.92fr) minmax(460px, 1.18fr);
   align-items: stretch;
-  min-height: calc(100vh - 235px);
+  min-height: 100%;
 }
 
 .list-mode-pane {
@@ -28,6 +29,10 @@
   display: flex;
   flex-direction: column;
   background: transparent;
+}
+
+.list-mode-pane--detail {
+  position: relative;
 }
 
 .list-mode-pane + .list-mode-pane {
@@ -1057,6 +1062,10 @@
 }
 
 @media (max-width: 768px) {
+  .list-mode-shell {
+    min-height: auto;
+  }
+
   .list-mode-board {
     grid-template-columns: 1fr;
     min-height: auto;

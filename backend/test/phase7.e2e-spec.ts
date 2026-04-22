@@ -4,7 +4,10 @@ import { URL } from 'node:url';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { OpenClawBinding } from '../src/database/entities/openclaw-binding.entity';
 import { OpenClawDispatch } from '../src/database/entities/openclaw-dispatch.entity';
+import { User } from '../src/database/entities/user.entity';
+import { OpenClawService } from '../src/openclaw/openclaw.service';
 
 describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
   jest.setTimeout(20000);
@@ -24,7 +27,9 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
   let sharedTodoId = '';
   let memberMentionKey = '';
   let removedMemberMentionKey = '';
+  let memberUserId = '';
   let dataSource: DataSource;
+  let openClawService: OpenClawService;
 
   const getHttpApp = () => app.getHttpServer();
   const getData = <T>(body: unknown): T => {
@@ -56,6 +61,8 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     process.env.NODE_ENV = 'development';
     process.env.OPENCLAW_PUBLIC_BASE_URL = 'https://aitodo.test/api/v1';
     process.env.OPENCLAW_PLUGIN_WS_URL = 'wss://gateway.aitodo.test/api/v1/openclaw/ws';
+    process.env.OPENCLAW_CHANNEL_CODE = 'aitodo_test';
+    delete process.env.OPENCLAW_CHANNEL_ACCOUNT_ID;
     process.env.OPENCLAW_PLUGIN_PACKAGE_NAME = '@ld0809/openclaw-channel-aitodo';
     process.env.OPENCLAW_PLUGIN_INSTALL_COMMAND_TEMPLATE = 'openclaw plugins install {{pluginPackageName}}';
     process.env.OPENCLAW_PLUGIN_ENABLE_COMMAND_TEMPLATE =
@@ -70,6 +77,7 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     app.setGlobalPrefix('api/v1');
     await app.init();
     dataSource = app.get(DataSource);
+    openClawService = app.get(OpenClawService);
   });
 
   afterAll(async () => {
@@ -94,6 +102,14 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     expect(loginRes.status).toBe(201);
     const loginData = getData<{ accessToken?: string; access_token?: string }>(loginRes.body);
     return loginData.accessToken ?? loginData.access_token ?? '';
+  };
+
+  const findUserIdByEmail = async (email: string) => {
+    const row = await dataSource.getRepository(User).createQueryBuilder('user')
+      .select(['user.id AS id'])
+      .where('user.email = :email', { email })
+      .getRawOne<{ id: string }>();
+    return row?.id ?? '';
   };
 
   const provisionBinding = async (token: string, deviceLabel: string) => {
@@ -124,6 +140,7 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     ownerToken = await registerAndLogin(ownerEmail);
     memberToken = await registerAndLogin(memberEmail);
     removedMemberToken = await registerAndLogin(removedMemberEmail);
+    memberUserId = await findUserIdByEmail(memberEmail);
 
     const provisionRes = await request(getHttpApp())
       .post(`${baseUrl}/openclaw/me/provision`)
@@ -135,6 +152,7 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
       connectToken: string | null;
       wsUrl: string | null;
       channelCode: string;
+      accountId: string;
       pluginPackageName: string;
       pluginInstallCommand: string | null;
       pluginEnableCommand: string | null;
@@ -144,10 +162,11 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     expect((provisionData.connectToken ?? '').length).toBeGreaterThan(10);
     expect(provisionData.wsUrl).toBe('wss://gateway.aitodo.test/api/v1/openclaw/ws');
     expect(provisionData.channelCode).toBe('aitodo');
+    expect(provisionData.accountId).toBe('aitodo_test');
     expect(provisionData.pluginPackageName).toBe('@ld0809/openclaw-channel-aitodo');
     expect(provisionData.connectionStatus).toBe('pending');
     expect(String(provisionData.pluginInstallCommand ?? '')).toContain('openclaw plugins install');
-    expect(String(provisionData.pluginEnableCommand ?? '')).toContain('openclaw config set channels.aitodo');
+    expect(String(provisionData.pluginEnableCommand ?? '')).toContain('openclaw config set channels.aitodo.accounts.aitodo_test');
     expect(provisionData.sessionStrategy).toBe('per_todo');
 
     const bindingData = await provisionBinding(memberToken, 'member-macbook');
@@ -161,6 +180,49 @@ describe('Phase 7 - OpenClaw Assistant Integration (e2e)', () => {
     expect(removedBindingData.deviceLabel).toBe('removed-member-macbook');
     expect(removedBindingData.timeoutSeconds).toBe(120);
     expect(removedBindingData.connectionStatus).toBe('pending');
+  });
+
+  it('manual ai report works even when auto dispatch is disabled', async () => {
+    const bindingRepository = dataSource.getRepository(OpenClawBinding);
+    const binding = await bindingRepository.findOneOrFail({ where: { userId: memberUserId } });
+    await bindingRepository.update(
+      { id: binding.id },
+      {
+        enabled: false,
+        connectionStatus: 'connected',
+      },
+    );
+
+    const fakeSocket = { readyState: 1 };
+    const serviceAsAny = openClawService as unknown as {
+      pickActiveSocket: (userId: string) => unknown;
+      sendSocketMessage: (socket: unknown, payload: { dispatchId?: string }) => void;
+      completePendingAiReportRequest: (dispatchId: string, userId: string, payload: unknown) => boolean;
+    };
+    const pickActiveSocketSpy = jest.spyOn(serviceAsAny, 'pickActiveSocket').mockReturnValue(fakeSocket);
+    const sendSocketMessageSpy = jest.spyOn(serviceAsAny, 'sendSocketMessage').mockImplementation((_socket, payload) => {
+      setTimeout(() => {
+        if (payload.dispatchId) {
+          serviceAsAny.completePendingAiReportRequest(payload.dispatchId, memberUserId, {
+            result: 'manual report from openclaw',
+          });
+        }
+      }, 0);
+    });
+
+    try {
+      await expect(openClawService.requestAiReport(memberUserId, '请生成本周工作报告')).resolves.toContain('manual report');
+    } finally {
+      pickActiveSocketSpy.mockRestore();
+      sendSocketMessageSpy.mockRestore();
+      await bindingRepository.update(
+        { id: binding.id },
+        {
+          enabled: true,
+          connectionStatus: 'pending',
+        },
+      );
+    }
   });
 
   it('owner creates shared card and assigned todo dispatches to member openclaw plugin channel', async () => {

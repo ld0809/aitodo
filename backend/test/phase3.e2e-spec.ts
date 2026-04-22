@@ -3,45 +3,11 @@ import { Test } from '@nestjs/testing';
 import axios from 'axios';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-
-jest.mock(
-  '@iflow-ai/iflow-cli-sdk',
-  () => {
-    class MockIFlowClient {
-      async connect() {
-        return Promise.resolve();
-      }
-
-      async disconnect() {
-        return Promise.resolve();
-      }
-
-      async sendMessage(message: string, files?: string[]) {
-        void message;
-        void files;
-        return Promise.resolve();
-      }
-
-      async *receiveMessages() {
-        yield { type: 'ASSISTANT', chunk: { text: 'iFlow mock report for phase3' } };
-        yield { type: 'TASK_FINISH' };
-      }
-    }
-
-    return {
-      IFlowClient: MockIFlowClient,
-      MessageType: {
-        ASSISTANT: 'ASSISTANT',
-        TASK_FINISH: 'TASK_FINISH',
-        ERROR: 'ERROR',
-      },
-    };
-  },
-  { virtual: true },
-);
+import { OpenClawService } from '../src/openclaw/openclaw.service';
 
 describe('Phase 3 - Progress and AI Report (e2e)', () => {
   let app: INestApplication;
+  let openClawService: OpenClawService;
   let token = '';
   let todoId = '';
   const baseUrl = '/api/v1';
@@ -57,7 +23,8 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
     process.env.DATABASE_PATH = ':memory:';
     process.env.NODE_ENV = 'development';
     process.env.AUTH_EXPOSE_VERIFY_CODE = 'true';
-    process.env.AI_REPORT_PROVIDER = 'iflow';
+    process.env.AI_REPORT_PROVIDER = 'openclaw';
+    delete process.env.AI_REPORT_OPENAI_API_MODE;
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -66,6 +33,8 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     await app.init();
+
+    openClawService = moduleRef.get(OpenClawService);
   });
 
   afterAll(async () => {
@@ -146,24 +115,31 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
     expect(addRes.status).toBe(404);
   });
 
-  it('generate ai report for custom range', async () => {
+  it('generate ai report for custom range by openclaw', async () => {
     const startAt = '2000-01-01T00:00:00.000Z';
     const endAt = '2100-01-01T00:00:00.000Z';
+    const openClawSpy = jest.spyOn(openClawService, 'requestAiReport').mockResolvedValue('OpenClaw mock report for phase3');
 
-    const reportRes = await request(getHttpApp())
-      .post(`${baseUrl}/reports/ai`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        startAt,
-        endAt,
-      });
+    try {
+      const reportRes = await request(getHttpApp())
+        .post(`${baseUrl}/reports/ai`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          startAt,
+          endAt,
+        });
 
-    expect(reportRes.status).toBe(201);
-    const reportPayload = getPayload<{ provider: string; todoCount: number; progressCount: number; report: string }>(reportRes.body);
-    expect(reportPayload.provider).toBe('iflow');
-    expect(reportPayload.todoCount).toBe(1);
-    expect(reportPayload.progressCount).toBe(1);
-    expect(reportPayload.report).toContain('iFlow mock report');
+      expect(reportRes.status).toBe(201);
+      const reportPayload = getPayload<{ provider: string; todoCount: number; progressCount: number; report: string }>(reportRes.body);
+      expect(reportPayload.provider).toBe('openclaw');
+      expect(reportPayload.todoCount).toBe(1);
+      expect(reportPayload.progressCount).toBe(1);
+      expect(reportPayload.report).toContain('OpenClaw mock report');
+      expect(openClawSpy).toHaveBeenCalledTimes(1);
+      expect(openClawSpy).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+    } finally {
+      openClawSpy.mockRestore();
+    }
   });
 
   it('generate ai report by openai when provider is configured', async () => {
@@ -180,6 +156,7 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
     } as never);
 
     process.env.AI_REPORT_PROVIDER = 'openai';
+    delete process.env.AI_REPORT_OPENAI_API_MODE;
     process.env.AI_REPORT_OPENAI_API_KEY = 'test-openai-key';
     process.env.AI_REPORT_OPENAI_MODEL = 'gpt-5-mini';
     process.env.AI_REPORT_OPENAI_BASE_URL = 'https://api.openai.test/v1';
@@ -213,7 +190,7 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
       );
     } finally {
       openAiPostSpy.mockRestore();
-      process.env.AI_REPORT_PROVIDER = 'iflow';
+      process.env.AI_REPORT_PROVIDER = 'openclaw';
       delete process.env.AI_REPORT_OPENAI_API_KEY;
       delete process.env.AI_REPORT_OPENAI_MODEL;
       delete process.env.AI_REPORT_OPENAI_BASE_URL;
@@ -279,7 +256,7 @@ describe('Phase 3 - Progress and AI Report (e2e)', () => {
       );
     } finally {
       openAiPostSpy.mockRestore();
-      process.env.AI_REPORT_PROVIDER = 'iflow';
+      process.env.AI_REPORT_PROVIDER = 'openclaw';
       delete process.env.AI_REPORT_OPENAI_API_MODE;
       delete process.env.AI_REPORT_OPENAI_API_KEY;
       delete process.env.AI_REPORT_OPENAI_MODEL;

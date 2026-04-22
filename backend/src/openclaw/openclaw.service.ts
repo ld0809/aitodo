@@ -18,6 +18,7 @@ const ACTIVE_DISPATCH_STATUSES = ['pending', 'dispatched', 'failed'] as const;
 
 interface OpenClawSetupInfo {
   channelCode: string;
+  accountId: string;
   wsUrl: string | null;
   docsUrl: string;
   pairingHint: string;
@@ -51,12 +52,38 @@ interface SocketMeta {
   bindingId: string;
 }
 
+interface PendingAiReportRequest {
+  userId: string;
+  resolve: (result: string) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
 @Injectable()
 export class OpenClawService implements OnModuleInit, OnModuleDestroy {
   private webSocketServer: WebSocketServer | null = null;
   private httpServer: HttpServer | null = null;
   private readonly socketsByUserId = new Map<string, Set<WebSocket>>();
   private readonly socketMeta = new WeakMap<WebSocket, SocketMeta>();
+  private readonly pendingAiReportRequests = new Map<string, PendingAiReportRequest>();
+
+  private resolveChannelCode() {
+    return 'aitodo';
+  }
+
+  private resolveAccountId() {
+    const explicitAccountId = process.env.OPENCLAW_CHANNEL_ACCOUNT_ID?.trim();
+    if (explicitAccountId && /^[A-Za-z0-9_-]+$/.test(explicitAccountId)) {
+      return explicitAccountId;
+    }
+
+    const legacyChannelCode = process.env.OPENCLAW_CHANNEL_CODE?.trim();
+    if (legacyChannelCode && legacyChannelCode !== 'aitodo' && /^[A-Za-z0-9_-]+$/.test(legacyChannelCode)) {
+      return legacyChannelCode;
+    }
+
+    return 'default';
+  }
 
   constructor(
     @InjectRepository(OpenClawBinding)
@@ -90,6 +117,80 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
       this.httpServer.off('upgrade', this.handleUpgrade);
     }
     this.webSocketServer?.close();
+    for (const [dispatchId, pendingRequest] of this.pendingAiReportRequests.entries()) {
+      clearTimeout(pendingRequest.timeout);
+      pendingRequest.reject(new Error('openclaw service is shutting down'));
+      this.pendingAiReportRequests.delete(dispatchId);
+    }
+  }
+
+  async requestAiReport(userId: string, prompt: string): Promise<string> {
+    const binding = await this.bindingRepository.findOne({ where: { userId } });
+    if (!binding) {
+      throw new BadRequestException('请先在设置中绑定 OpenClaw，再使用 AI 报告。');
+    }
+
+    const socket = this.pickActiveSocket(userId);
+    if (!socket) {
+      throw new BadRequestException('当前 OpenClaw 未连接，请先在本地 OpenClaw Gateway 中完成连接。');
+    }
+
+    const dispatchId = randomUUID();
+    const timeoutMs = Math.max(1_000, Number(binding.timeoutSeconds || 900) * 1_000);
+    const payload = {
+      type: 'dispatch.todo',
+      transport: 'openclaw_channel_plugin',
+      channel: this.resolveChannelCode(),
+      dispatchId,
+      deviceLabel: binding.deviceLabel,
+      timeoutSeconds: binding.timeoutSeconds,
+      sessionKey: `${this.resolveChannelCode()}:report:${userId}`,
+      task: {
+        message: prompt,
+        meta: {
+          source: 'aitodo-ai-report',
+          userId,
+          reportType: 'progress_summary',
+          reportMode: true,
+          recommendedAgentRoute: 'reporter',
+        },
+      },
+    };
+
+    return new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingAiReportRequests.delete(dispatchId);
+        reject(new Error('openclaw ai report timed out'));
+      }, timeoutMs);
+
+      this.pendingAiReportRequests.set(dispatchId, {
+        userId,
+        resolve: (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout,
+      });
+
+      try {
+        this.sendSocketMessage(socket, payload);
+        void this.bindingRepository.update(
+          { id: binding.id },
+          {
+            connectionStatus: 'connected',
+            lastDispatchedAt: new Date(),
+            lastSeenAt: new Date(),
+            lastError: null,
+          },
+        );
+      } catch (error) {
+        this.rejectPendingAiReportRequest(dispatchId, new Error(this.getErrorMessage(error)));
+      }
+    });
   }
 
   async getMyBinding(userId: string): Promise<OpenClawBindingResponse> {
@@ -331,7 +432,7 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
 
     this.sendSocketMessage(socket, {
       type: 'aitodo.connected',
-      channel: 'aitodo',
+      channel: this.resolveChannelCode(),
       sessionStrategy: 'per_todo',
       routingHint: '请在本地 OpenClaw Gateway 中把 aitodo channel 路由到你的规划 agent。',
     });
@@ -401,6 +502,16 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      const pendingReportHandled = this.completePendingAiReportRequest(
+        dispatchId,
+        meta.userId,
+        payload.result ?? payload.payload ?? payload,
+      );
+      if (pendingReportHandled) {
+        this.sendSocketMessage(socket, { type: 'dispatch.ack', dispatchId, status: 'accepted' });
+        return;
+      }
+
       const dispatch = await this.dispatchRepository.findOne({
         where: { id: dispatchId, userId: meta.userId },
         relations: {
@@ -431,6 +542,13 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
         this.sendSocketMessage(socket, { type: 'aitodo.error', error: 'dispatchId is required' });
         return;
       }
+
+      const pendingReportFailed = this.failPendingAiReportRequest(dispatchId, meta.userId, reason);
+      if (pendingReportFailed) {
+        this.sendSocketMessage(socket, { type: 'dispatch.ack', dispatchId, status: 'failed_recorded' });
+        return;
+      }
+
       await this.markDispatchFailed(dispatchId, meta.userId, reason);
       this.sendSocketMessage(socket, { type: 'dispatch.ack', dispatchId, status: 'failed_recorded' });
       return;
@@ -669,7 +787,7 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
     return {
       type: 'dispatch.todo',
       transport: 'openclaw_channel_plugin',
-      channel: 'aitodo',
+      channel: this.resolveChannelCode(),
       dispatchId,
       deviceLabel: binding.deviceLabel,
       timeoutSeconds: binding.timeoutSeconds,
@@ -879,43 +997,78 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildSetupInfo(binding: OpenClawBinding | null, user: Pick<User, 'email' | 'nickname'> | null): OpenClawSetupInfo {
+    const channelCode = this.resolveChannelCode();
+    const accountId = this.resolveAccountId();
     const pluginPackageName = this.resolvePluginPackageName();
     const wsUrl = this.resolveWebSocketUrl();
     const docsUrl = 'https://docs.openclaw.ai/zh-CN/channels/channel-routing';
-    const pairingHint = '不需要公网 IP。请在本地 OpenClaw Gateway 安装并启用 aitodo channel 插件，让本地主动长连 AITodo。';
+    const pairingHint = accountId === 'default'
+      ? '不需要公网 IP。请在本地 OpenClaw Gateway 安装并启用 aitodo channel 插件，让本地主动长连 AITodo。'
+      : `不需要公网 IP。请在本地 OpenClaw Gateway 的 aitodo channel 下新增 account ${accountId}，让本地主动长连 AITodo。`;
     const suggestedDeviceLabel = this.buildSuggestedDeviceLabel(user);
     const pluginInstallCommand = this.buildPluginInstallCommand(pluginPackageName);
     const pluginEnableCommand = binding?.connectToken && wsUrl
-      ? this.buildPluginEnableCommand(pluginPackageName, wsUrl, binding.connectToken, binding.deviceLabel ?? suggestedDeviceLabel)
+      ? this.buildPluginEnableCommand(
+          pluginPackageName,
+          wsUrl,
+          binding.connectToken,
+          binding.deviceLabel ?? suggestedDeviceLabel,
+          channelCode,
+          accountId,
+        )
       : null;
 
     const pluginConfigSnippet = binding?.connectToken && wsUrl
       ? JSON.stringify(
-          {
-            channels: {
-              aitodo: {
-                enabled: true,
-                url: wsUrl,
-                token: binding.connectToken,
-                deviceName: binding.deviceLabel ?? suggestedDeviceLabel,
-                routingPeerTemplate: '{serverSessionKey}',
-                rules: [
-                  {
-                    field: 'cardId',
-                    pattern: '^shared-card-id$',
-                    routingPeerTemplate: 'aitodo:card:{cardId}',
+          accountId === 'default'
+            ? {
+                channels: {
+                  [channelCode]: {
+                    enabled: true,
+                    url: wsUrl,
+                    token: binding.connectToken,
+                    deviceName: binding.deviceLabel ?? suggestedDeviceLabel,
+                    routingPeerTemplate: '{serverSessionKey}',
+                    rules: [
+                      {
+                        field: 'cardId',
+                        pattern: '^shared-card-id$',
+                        routingPeerTemplate: `${channelCode}:card:{cardId}`,
+                      },
+                    ],
                   },
-                ],
+                },
+              }
+            : {
+                channels: {
+                  [channelCode]: {
+                    accounts: {
+                      [accountId]: {
+                        enabled: true,
+                        url: wsUrl,
+                        token: binding.connectToken,
+                        deviceName: binding.deviceLabel ?? suggestedDeviceLabel,
+                        routingPeerTemplate: '{serverSessionKey}',
+                        rules: [
+                          {
+                            field: 'cardId',
+                            pattern: '^shared-card-id$',
+                            routingPeerTemplate: `${channelCode}:card:{cardId}`,
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
               },
-            },
-          },
           null,
           2,
         )
       : null;
 
     return {
-      channelCode: 'aitodo',
+      channelCode,
+      accountId,
       wsUrl,
       docsUrl,
       pairingHint,
@@ -923,7 +1076,9 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
       pluginInstallCommand,
       pluginEnableCommand,
       pluginConfigSnippet,
-      routingHint: '默认按 todoId 隔离 session；如需按 cardId 聚合或把指定 cardId 路由到不同 agent，请在 channels.aitodo.rules 与顶层 bindings 中配合 peer=aitodo:card:{cardId} 使用。',
+      routingHint: accountId === 'default'
+        ? `默认按 todoId 隔离 session；如需按 cardId 聚合或把指定 cardId 路由到不同 agent，请在 channels.${channelCode}.rules 与顶层 bindings 中配合 peer=${channelCode}:card:{cardId} 使用。`
+        : `默认按 todoId 隔离 session；当前建议把环境隔离在 channels.${channelCode}.accounts.${accountId} 下。如需按 cardId 聚合，可继续配 peer=${channelCode}:card:{cardId}。`,
       sessionStrategy: 'per_todo',
     };
   }
@@ -943,15 +1098,26 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
     wsUrl: string,
     token: string,
     deviceLabel: string | null,
+    channelCode: string,
+    accountId: string,
   ) {
-    const template = process.env.OPENCLAW_PLUGIN_ENABLE_COMMAND_TEMPLATE?.trim()
-      || "openclaw config set channels.aitodo '{\"enabled\":true,\"url\":\"{{wsUrl}}\",\"token\":\"{{token}}\",\"deviceName\":\"{{deviceLabel}}\"}' --strict-json";
-    if (!template) {
+    const rawTemplate = process.env.OPENCLAW_PLUGIN_ENABLE_COMMAND_TEMPLATE?.trim()
+      || "openclaw config set channels.{{channelCode}} '{\"enabled\":true,\"url\":\"{{wsUrl}}\",\"token\":\"{{token}}\",\"deviceName\":\"{{deviceLabel}}\"}' --strict-json";
+    if (!rawTemplate) {
       return null;
     }
 
+    const targetPath = accountId === 'default'
+      ? `channels.${channelCode}`
+      : `channels.${channelCode}.accounts.${accountId}`;
+    const template = rawTemplate.includes('{{channelCode}}')
+      ? rawTemplate.replace(/channels\.\{\{channelCode\}\}/g, targetPath)
+      : rawTemplate.replace(/channels\.aitodo(\.accounts\.[A-Za-z0-9_-]+)?\b/g, targetPath);
+
     return template
       .replaceAll('{{pluginPackageName}}', pluginPackageName)
+      .replaceAll('{{channelCode}}', channelCode)
+      .replaceAll('{{accountId}}', accountId)
       .replaceAll('{{wsUrl}}', wsUrl)
       .replaceAll('{{token}}', token)
       .replaceAll('{{deviceLabel}}', deviceLabel ?? 'aitodo-local');
@@ -963,7 +1129,7 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildSessionKey(todoId: string) {
-    return `aitodo:todo:${todoId}`;
+    return `${this.resolveChannelCode()}:todo:${todoId}`;
   }
 
   private extractResultText(payload: unknown): string | null {
@@ -1090,6 +1256,43 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
       throw new Error('socket is not open');
     }
     socket.send(JSON.stringify(payload));
+  }
+
+  private completePendingAiReportRequest(dispatchId: string, userId: string, payload: unknown) {
+    const request = this.pendingAiReportRequests.get(dispatchId);
+    if (!request || request.userId !== userId) {
+      return false;
+    }
+
+    const resultText = this.extractResultText(payload);
+    if (!resultText) {
+      this.rejectPendingAiReportRequest(dispatchId, new Error('openclaw result is empty'));
+      return true;
+    }
+
+    this.pendingAiReportRequests.delete(dispatchId);
+    request.resolve(resultText);
+    return true;
+  }
+
+  private failPendingAiReportRequest(dispatchId: string, userId: string, reason: string) {
+    const request = this.pendingAiReportRequests.get(dispatchId);
+    if (!request || request.userId !== userId) {
+      return false;
+    }
+
+    this.rejectPendingAiReportRequest(dispatchId, new Error(reason));
+    return true;
+  }
+
+  private rejectPendingAiReportRequest(dispatchId: string, error: Error) {
+    const request = this.pendingAiReportRequests.get(dispatchId);
+    if (!request) {
+      return;
+    }
+
+    this.pendingAiReportRequests.delete(dispatchId);
+    request.reject(error);
   }
 
   private pickActiveSocket(userId: string): WebSocket | null {

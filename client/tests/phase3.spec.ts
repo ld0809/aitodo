@@ -203,7 +203,7 @@ test('phase3: progress update + ai report entry', async ({ page }) => {
         code: 0,
         message: 'ok',
         data: {
-          provider: 'iflow',
+          provider: 'openclaw',
           period: {
             startAt: new Date().toISOString(),
             endAt: new Date().toISOString(),

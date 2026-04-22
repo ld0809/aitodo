@@ -1,13 +1,14 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
 import { Repository } from 'typeorm';
 import { TodoProgressEntry } from '../database/entities/todo-progress.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
+import { OpenClawService } from '../openclaw/openclaw.service';
 import { GenerateAiReportDto } from './dto/generate-ai-report.dto';
 
-type AiReportProvider = 'iflow' | 'openai';
+type AiReportProvider = 'openclaw' | 'openai';
 type OpenAiApiMode = 'responses' | 'chat_completions';
 
 interface ReportRange {
@@ -26,30 +27,6 @@ interface ReportTodoProgressItem {
   }>;
 }
 
-interface IFlowStreamMessage {
-  type?: string;
-  chunk?: {
-    text?: string;
-  };
-  error?: string;
-}
-
-interface IFlowClient {
-  connect: () => Promise<void>;
-  disconnect: () => Promise<void>;
-  sendMessage: (message: string, files?: string[]) => Promise<void>;
-  receiveMessages: () => AsyncIterable<IFlowStreamMessage>;
-}
-
-interface IFlowClientConstructor {
-  new (options: Record<string, unknown>): IFlowClient;
-}
-
-interface IFlowSdk {
-  IFlowClient: IFlowClientConstructor;
-  MessageType: Record<string, string>;
-}
-
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
@@ -59,6 +36,7 @@ export class ReportsService {
     private readonly todoProgressRepository: Repository<TodoProgressEntry>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly openClawService: OpenClawService,
   ) {}
 
   async generateAiReport(userId: string, dto: GenerateAiReportDto) {
@@ -106,7 +84,7 @@ export class ReportsService {
       const report =
         provider === 'openai'
           ? await this.generateByOpenAi(prompt)
-          : await this.generateByIFlow(prompt);
+          : await this.openClawService.requestAiReport(userId, prompt);
       if (!report.trim()) {
         throw new InternalServerErrorException(`${provider} returned empty report`);
       }
@@ -123,6 +101,9 @@ export class ReportsService {
         report,
       };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : `unknown ${provider} error`;
       this.logger.error(`AI report generation failed by ${provider}: ${message}`);
       throw new InternalServerErrorException(`${provider} report generation failed: ${message}`);
@@ -131,8 +112,8 @@ export class ReportsService {
 
   private resolveAiReportProvider(): AiReportProvider {
     const rawProvider = process.env.AI_REPORT_PROVIDER?.trim().toLowerCase();
-    if (!rawProvider || rawProvider === 'iflow') {
-      return 'iflow';
+    if (!rawProvider || rawProvider === 'openclaw') {
+      return 'openclaw';
     }
     if (rawProvider === 'openai') {
       return 'openai';
@@ -245,47 +226,6 @@ export class ReportsService {
       '待办进展数据：',
       taskLines.join('\n'),
     ].join('\n');
-  }
-
-  private async generateByIFlow(prompt: string): Promise<string> {
-    let sdk: IFlowSdk;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      sdk = require('@iflow-ai/iflow-cli-sdk') as IFlowSdk;
-    } catch {
-      throw new Error('Cannot load @iflow-ai/iflow-cli-sdk, please install it in backend dependencies.');
-    }
-    const client = new sdk.IFlowClient({
-      logLevel: process.env.AI_REPORT_IFLOW_LOG_LEVEL ?? 'ERROR',
-      autoStartProcess: process.env.AI_REPORT_IFLOW_AUTOSTART !== 'false',
-      timeout: Number(process.env.AI_REPORT_IFLOW_TIMEOUT_MS ?? 300000),
-    });
-
-    const assistantType = sdk.MessageType.ASSISTANT;
-    const finishType = sdk.MessageType.TASK_FINISH;
-    const errorType = sdk.MessageType.ERROR;
-    let fullResponse = '';
-
-    await client.connect();
-    try {
-      await client.sendMessage(prompt);
-      for await (const message of client.receiveMessages()) {
-        if (message.type === assistantType && message.chunk?.text) {
-          fullResponse += message.chunk.text;
-          continue;
-        }
-        if (message.type === finishType) {
-          break;
-        }
-        if (message.type === errorType) {
-          throw new Error(message.error || 'unknown iFlow error');
-        }
-      }
-    } finally {
-      await client.disconnect().catch(() => undefined);
-    }
-
-    return fullResponse.trim();
   }
 
   private async generateByOpenAi(prompt: string): Promise<string> {

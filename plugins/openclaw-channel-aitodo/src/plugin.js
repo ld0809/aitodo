@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { resolveAccount, listAccountIds, inspectAccount, isConfigured, isEnabled, describeAccount, disabledReason, unconfiguredReason, applyAccountConfig, setAccountEnabled, deleteAccount, buildChannelConfigSchema, DEFAULT_ACCOUNT_ID } from "./account.js";
+import { resolveAccount, listAccountIds, inspectAccount, isConfigured, isEnabled, describeAccount, disabledReason, unconfiguredReason, applyAccountName, applyAccountConfig, setAccountEnabled, deleteAccount, buildChannelConfigSchema, DEFAULT_ACCOUNT_ID, normalizeAccountId, resolveDefaultAccountId } from "./account.js";
 import { resolveRoutingPeerId } from "./routing.js";
 import { extractResultText } from "./result.js";
 import { runtimeStore } from "./runtime-store.js";
@@ -368,7 +368,7 @@ async function startSocketLoop(ctx) {
           }
 
           const type = typeof message?.type === "string" ? message.type : "";
-          if (type === "dispatch.todo") {
+          if (type === "dispatch.todo" || type === "dispatch.report") {
             void handleDispatch(ctx, account, controller, message);
             return;
           }
@@ -470,7 +470,7 @@ const basePlugin = createChannelPluginBase({
     listAccountIds,
     resolveAccount,
     inspectAccount,
-    defaultAccountId: () => DEFAULT_ACCOUNT_ID,
+    defaultAccountId: (cfg) => resolveDefaultAccountId(cfg),
     setAccountEnabled,
     deleteAccount,
     isConfigured,
@@ -480,7 +480,8 @@ const basePlugin = createChannelPluginBase({
     describeAccount,
   },
   setup: {
-    resolveAccountId: () => DEFAULT_ACCOUNT_ID,
+    resolveAccountId: ({ cfg, accountId }) => accountId ? normalizeAccountId(accountId) : resolveDefaultAccountId(cfg),
+    applyAccountName,
     applyAccountConfig,
   },
 });
@@ -499,7 +500,7 @@ export const aitodoPlugin = {
     buildAccountSnapshot: ({ account, runtime }) => ({
       ...describeAccount(account),
       ...runtime,
-      accountId: DEFAULT_ACCOUNT_ID,
+      accountId: account.accountId,
     }),
   },
   gateway: {

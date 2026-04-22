@@ -6,7 +6,7 @@ export interface GenerateAiReportDto {
 }
 
 export interface AiReportResult {
-  provider: 'iflow' | 'openai';
+  provider: 'openclaw' | 'openai';
   period: {
     startAt: string;
     endAt: string;

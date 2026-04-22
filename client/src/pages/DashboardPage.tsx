@@ -353,7 +353,6 @@ export function DashboardPage() {
   const [listDetailDueAt, setListDetailDueAt] = useState('');
   const [listDetailExecuteAt, setListDetailExecuteAt] = useState('');
   const [listDetailTagIds, setListDetailTagIds] = useState<string[]>([]);
-  const [showListDetailFloatingActions, setShowListDetailFloatingActions] = useState(false);
   const CARD_H = 3;
   const CARD_MIN_H = 2;
   const CARD_W = 1;
@@ -611,6 +610,7 @@ export function DashboardPage() {
     }
     return buildTapdDetailViewUrl(selectedListTodoEntry.todo.url);
   }, [selectedListTodoEntry]);
+  const showListDetailFloatingActions = viewMode === 'list' && !!selectedListTodoEntry;
   const { data: selectedTodoProgressEntries = [] } = useQuery({
     queryKey: ['todo-progress-inline', userScope, selectedListTodoEntry?.todo.id],
     enabled: viewMode === 'list' && !!selectedListTodoEntry?.todo.id && selectedListTodoEntry.canUpdateProgress,
@@ -1634,11 +1634,7 @@ export function DashboardPage() {
                 </div>
               </section>
 
-              <section
-                className="list-mode-pane list-mode-pane--detail"
-                onMouseEnter={() => setShowListDetailFloatingActions(true)}
-                onMouseLeave={() => setShowListDetailFloatingActions(false)}
-              >
+              <section className="list-mode-pane list-mode-pane--detail">
                 {!selectedListTodoEntry ? (
                   <div className="list-mode-pane-body list-mode-detail-empty">
                     选择一条待办后，可在这里查看详情、编辑内容和追加进度。
@@ -1746,8 +1742,6 @@ export function DashboardPage() {
       {viewMode === 'list' && selectedListTodoEntry && (
         <div
           className={`list-mode-screen-floating-actions ${showListDetailFloatingActions ? 'visible' : ''}`}
-          onMouseEnter={() => setShowListDetailFloatingActions(true)}
-          onMouseLeave={() => setShowListDetailFloatingActions(false)}
         >
           {selectedListTodoEntry.todo.url && (
             <Button
@@ -1903,7 +1897,7 @@ export function DashboardPage() {
               {aiReportResult && (
                 <div className="report-result">
                   <div className="report-meta">
-                    <span>来源：iFlow</span>
+                    <span>来源：{aiReportResult.provider === 'openclaw' ? 'OpenClaw' : 'OpenAI'}</span>
                     <span>待办数：{aiReportResult.todoCount}</span>
                     <span>进度条数：{aiReportResult.progressCount}</span>
                   </div>

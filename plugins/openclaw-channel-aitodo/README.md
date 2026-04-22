@@ -34,11 +34,42 @@ openclaw daemon restart
 
 ## 配置
 
+单账号兼容写法：
+
 ```bash
 openclaw config set channels.aitodo '{"enabled":true,"url":"ws://127.0.0.1:3002/api/v1/openclaw/ws","token":"<connect-token>","deviceName":"aitodo-local"}' --strict-json
 ```
 
-更多可选字段直接写入 `~/.openclaw/openclaw.json` 的 `channels.aitodo`：
+推荐的多账号写法是固定使用同一个 channel `aitodo`，再通过 `accounts.<accountId>` 区分环境：
+
+```bash
+openclaw config set channels.aitodo '{
+  "defaultAccount":"local",
+  "accounts":{
+    "local":{
+      "enabled":true,
+      "url":"ws://127.0.0.1:3002/api/v1/openclaw/ws",
+      "token":"<local-connect-token>",
+      "deviceName":"aitodo-local"
+    },
+    "prod":{
+      "enabled":true,
+      "url":"wss://aitodo.example.com/api/v1/openclaw/ws",
+      "token":"<prod-connect-token>",
+      "deviceName":"aitodo-prod"
+    }
+  }
+}' --strict-json
+```
+
+不要新增 `aitodo_local` / `aitodo_prod` 这样的 channel id，插件只声明了一个 channel：`aitodo`。
+
+更多可选字段可以写在 `~/.openclaw/openclaw.json` 的：
+
+- 旧版单账号：`channels.aitodo`
+- 多账号：`channels.aitodo.accounts.<accountId>`
+
+可选字段包括：
 
 - `routingPeerTemplate`: 默认 `{serverSessionKey}`，可改成 `aitodo:card:{cardId}` 以卡片维度聚合会话
 - `rules`: 规则数组，可按 `cardId` / `todoId` / `sessionKey` / `dispatchId` 选择不同的 `routingPeerTemplate`
@@ -47,24 +78,35 @@ openclaw config set channels.aitodo '{"enabled":true,"url":"ws://127.0.0.1:3002/
 - `reconnectMaxMs`
 - `runTimeoutFallbackMs`
 
-完整示例：
+多账号完整示例：
 
 ```json
 {
   "channels": {
     "aitodo": {
-      "enabled": true,
-      "url": "ws://127.0.0.1:3002/api/v1/openclaw/ws",
-      "token": "<connect-token>",
-      "deviceName": "aitodo-local",
-      "routingPeerTemplate": "{serverSessionKey}",
-      "rules": [
-        {
-          "field": "cardId",
-          "pattern": "^shared-card-001$",
-          "routingPeerTemplate": "aitodo:card:{cardId}"
+      "defaultAccount": "local",
+      "accounts": {
+        "local": {
+          "enabled": true,
+          "url": "ws://127.0.0.1:3002/api/v1/openclaw/ws",
+          "token": "<local-connect-token>",
+          "deviceName": "aitodo-local",
+          "routingPeerTemplate": "{serverSessionKey}",
+          "rules": [
+            {
+              "field": "cardId",
+              "pattern": "^shared-card-001$",
+              "routingPeerTemplate": "aitodo:card:{cardId}"
+            }
+          ]
+        },
+        "prod": {
+          "enabled": true,
+          "url": "wss://aitodo.example.com/api/v1/openclaw/ws",
+          "token": "<prod-connect-token>",
+          "deviceName": "aitodo-prod"
         }
-      ]
+      }
     }
   }
 }

@@ -524,6 +524,7 @@ export function SettingsPage() {
                   <div className="settings-openclaw-step-body">
                     <div className="settings-openclaw-inline-meta">
                       <span>Channel：{openClawBinding?.channelCode || 'aitodo'}</span>
+                      <span>Account：{openClawBinding?.accountId || 'default'}</span>
                       <span>WS 地址：{openClawBinding?.wsUrl || '当前服务端未配置'}</span>
                       {openClawBinding?.docsUrl && (
                         <a href={openClawBinding.docsUrl} target="_blank" rel="noreferrer">查看文档</a>
@@ -731,6 +732,7 @@ export function SettingsPage() {
                     {openClawTokenReady && (
                       <div className="settings-openclaw-runtime-card">
                         <div>Channel：{openClawBinding?.channelCode || 'aitodo'}</div>
+                        <div>Account：{openClawBinding?.accountId || 'default'}</div>
                         <div>Session 策略：{openClawBinding?.sessionStrategy === 'per_todo' ? '每条待办一个会话' : '未设置'}</div>
                         <div>路由提示：{openClawBinding?.routingHint || '无'}</div>
                         <div>当前设备：{openClawBinding?.deviceLabel || openClawDeviceLabel || '未设置'}</div>
