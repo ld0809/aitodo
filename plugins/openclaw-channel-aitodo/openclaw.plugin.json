@@ -6,7 +6,195 @@
   ],
   "name": "AITodo",
   "description": "AITodo channel plugin for OpenClaw",
-  "version": "0.1.0",
+  "version": "0.1.2",
+  "channelConfigs": {
+    "aitodo": {
+      "label": "AITodo",
+      "description": "Connect OpenClaw to AITodo shared todo dispatches.",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "deviceName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "routingPeerTemplate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "heartbeatIntervalMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "reconnectBaseMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "reconnectMaxMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "runTimeoutFallbackMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "cardId",
+                    "todoId",
+                    "sessionKey",
+                    "dispatchId"
+                  ]
+                },
+                "pattern": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "routingPeerTemplate": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "field",
+                "pattern"
+              ]
+            }
+          },
+          "defaultAccount": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "url": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "token": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "deviceName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "routingPeerTemplate": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "heartbeatIntervalMs": {
+                  "type": "integer",
+                  "minimum": 1000
+                },
+                "reconnectBaseMs": {
+                  "type": "integer",
+                  "minimum": 1000
+                },
+                "reconnectMaxMs": {
+                  "type": "integer",
+                  "minimum": 1000
+                },
+                "runTimeoutFallbackMs": {
+                  "type": "integer",
+                  "minimum": 1000
+                },
+                "rules": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string",
+                        "enum": [
+                          "cardId",
+                          "todoId",
+                          "sessionKey",
+                          "dispatchId"
+                        ]
+                      },
+                      "pattern": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "routingPeerTemplate": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "pattern"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "uiHints": {
+        "url": {
+          "label": "AITodo WS URL",
+          "placeholder": "wss://aitodo.example.com/api/v1/openclaw/ws"
+        },
+        "token": {
+          "label": "Connect Token",
+          "sensitive": true
+        },
+        "deviceName": {
+          "label": "Device Name",
+          "placeholder": "aitodo-macbook"
+        },
+        "routingPeerTemplate": {
+          "label": "Routing Peer Template",
+          "help": "Use {serverSessionKey}, {todoId}, or {cardId} to reuse OpenClaw peer routing."
+        },
+        "accounts": {
+          "label": "Accounts"
+        }
+      }
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
