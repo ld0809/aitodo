@@ -4,9 +4,16 @@
 This repository is split into two apps:
 - `backend/`: NestJS + TypeScript API (`src/` modules like `auth`, `todos`, `cards`, `tapd`, `plugins`; integration tests in `test/`; build output in `dist/`).
 - `client/`: React + Vite frontend (`src/` with `pages`, `components`, `api`, `store`; Playwright tests in `tests/`; build output in `dist/`).
-- `docs/`: product and architecture docs (`PRD.md`, `ARCHITECTURE.md`).
+- `docs/`: product, architecture, and current project knowledge docs (`PROJECT_KNOWLEDGE.md`, `KNOWLEDGE_MAINTENANCE.md`, `PRD.md`, `ARCHITECTURE.md`).
 
 Keep new domain logic inside the existing module boundaries (e.g., TAPD changes under `backend/src/tapd` or `backend/src/plugins/adapters`).
+
+## Project Knowledge Requirements
+Before non-trivial development, read `docs/PROJECT_KNOWLEDGE.md` and use it as the current source of truth for code architecture, business logic, and UI interactions. Historical phase docs are useful context, but when they conflict with current code or `PROJECT_KNOWLEDGE.md`, prefer the current code and update the knowledge doc.
+
+After every code change, decide whether the basic knowledge changed. If the change affects backend architecture, API contracts, database schema, business rules, dashboard/card/list UI interactions, shared UI primitives, TAPD/report/miniapp/OpenClaw behavior, or persistence semantics, update `docs/PROJECT_KNOWLEDGE.md` in the same change. Follow `docs/KNOWLEDGE_MAINTENANCE.md` for the checklist.
+
+A local project skill exists at `.codex/skills/aitodo-knowledge-maintainer/SKILL.md`. Use its workflow whenever a task asks to update/verify project knowledge or when implementation may change knowledge.
 
 ## Build, Test, and Development Commands
 Run commands from each app directory.

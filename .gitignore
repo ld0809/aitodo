@@ -1,4 +1,9 @@
 .omc
+# Keep the project knowledge base trackable even if a developer has a global docs ignore.
+!docs/
+docs/*
+!docs/PROJECT_KNOWLEDGE.md
+!docs/KNOWLEDGE_MAINTENANCE.md
 backend/.env
 backend/.env.*
 !backend/.env.example
