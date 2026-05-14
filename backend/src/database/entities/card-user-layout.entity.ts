@@ -37,6 +37,9 @@ export class CardUserLayout {
   @Column({ name: 'layouts_json', type: 'text', nullable: true })
   layoutsJson!: string | null;
 
+  @Column({ name: 'show_completed_todos', type: 'boolean', default: true })
+  showCompletedTodos!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;
 

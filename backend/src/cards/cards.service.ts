@@ -7,6 +7,7 @@ import { Tag } from '../database/entities/tag.entity';
 import { Todo } from '../database/entities/todo.entity';
 import { User } from '../database/entities/user.entity';
 import { PluginExecutor } from '../plugins/plugin-executor.service';
+import { UpdateCardPreferencesDto } from './dto/update-card-preferences.dto';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { UpdateDashboardLayoutDto } from './dto/update-dashboard-layout.dto';
@@ -14,6 +15,7 @@ import { LayoutViewport, UpdateLayoutDto } from './dto/update-layout.dto';
 
 type LayoutItem = { x: number; y: number; w: number; h: number };
 type LayoutByViewport = Partial<Record<LayoutViewport, LayoutItem>>;
+type CardWithPreferences = Card & { showCompletedTodos?: boolean };
 
 const DEFAULT_LAYOUT_VIEWPORT: LayoutViewport = 'desktop_normal';
 const VALID_LAYOUT_VIEWPORTS = new Set<LayoutViewport>(['mobile', 'tablet', 'desktop_normal', 'desktop_big']);
@@ -187,6 +189,26 @@ export class CardsService {
     const viewport = this.resolveViewport(dto.viewport);
     await this.findAccessibleCardOrThrow(userId, id);
     await this.saveUserLayouts(userId, [{ id, x: dto.x, y: dto.y, w: dto.w, h: dto.h }], viewport);
+    return this.findOne(userId, id, viewport);
+  }
+
+  async updatePreferences(userId: string, id: string, dto: UpdateCardPreferencesDto) {
+    const viewport = this.resolveViewport(dto.viewport);
+    const card = await this.findAccessibleCardOrThrow(userId, id);
+
+    if (dto.showCompletedTodos !== undefined) {
+      await this.saveUserPreferences(userId, id, {
+        showCompletedTodos: dto.showCompletedTodos,
+        viewport,
+        fallbackLayout: {
+          x: card.x,
+          y: card.y,
+          w: card.w,
+          h: card.h,
+        },
+      });
+    }
+
     return this.findOne(userId, id, viewport);
   }
 
@@ -380,6 +402,7 @@ export class CardsService {
         card.y = scopedLayout.y;
         card.w = scopedLayout.w;
         card.h = scopedLayout.h;
+        (card as CardWithPreferences).showCompletedTodos = layout.showCompletedTodos;
         continue;
       }
 
@@ -387,6 +410,7 @@ export class CardsService {
       card.y = layout.y;
       card.w = this.normalizeLegacyLayoutAxis(layout.w, true);
       card.h = layout.h;
+      (card as CardWithPreferences).showCompletedTodos = layout.showCompletedTodos;
 
       layout.layoutsJson = JSON.stringify(
         this.mergeLayout(layoutByViewport, normalizedViewport, {
@@ -460,7 +484,43 @@ export class CardsService {
     await targetManager.save(CardUserLayout, layoutsToSave);
   }
 
-  private toCardResponse(card: Card) {
+  private async saveUserPreferences(
+    userId: string,
+    cardId: string,
+    preferences: { showCompletedTodos?: boolean; viewport: LayoutViewport; fallbackLayout?: LayoutItem },
+  ) {
+    const existingLayout = await this.cardUserLayoutRepository.findOne({
+      where: {
+        userId,
+        cardId,
+      },
+    });
+
+    if (existingLayout) {
+      if (preferences.showCompletedTodos !== undefined) {
+        existingLayout.showCompletedTodos = preferences.showCompletedTodos;
+      }
+      await this.cardUserLayoutRepository.save(existingLayout);
+      return;
+    }
+
+    await this.cardUserLayoutRepository.save(
+      this.cardUserLayoutRepository.create({
+        userId,
+        cardId,
+        x: preferences.fallbackLayout?.x ?? 0,
+        y: preferences.fallbackLayout?.y ?? 0,
+        w: preferences.fallbackLayout?.w ?? 4,
+        h: preferences.fallbackLayout?.h ?? 4,
+        layoutsJson: JSON.stringify(
+          this.mergeLayout({}, preferences.viewport, preferences.fallbackLayout ?? { x: 0, y: 0, w: 4, h: 4 }),
+        ),
+        showCompletedTodos: preferences.showCompletedTodos ?? true,
+      }),
+    );
+  }
+
+  private toCardResponse(card: CardWithPreferences) {
     return {
       id: card.id,
       userId: card.userId,
@@ -475,6 +535,7 @@ export class CardsService {
       h: card.h,
       pluginType: card.pluginType,
       pluginConfigJson: card.pluginConfigJson,
+      showCompletedTodos: card.showCompletedTodos ?? true,
       tags: card.tags ?? [],
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,

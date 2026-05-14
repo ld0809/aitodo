@@ -774,6 +774,15 @@ export function DashboardPage() {
     },
   });
 
+  const updateCardPreferencesMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { showCompletedTodos?: boolean; viewport?: LayoutViewport } }) =>
+      cardsApi.updatePreferences(id, data),
+    onError: (error: unknown) => {
+      alert(getErrorMessage(error, '保存卡片视图状态失败'));
+      queryClient.invalidateQueries({ queryKey: ['cards', userScope] });
+    },
+  });
+
   const createTagMutation = useMutation({
     mutationFn: (data: CreateTagDto) => tagsApi.create(data),
     onSuccess: () => {
@@ -1062,10 +1071,20 @@ export function DashboardPage() {
   };
 
   const handleToggleCompletedVisibility = (cardId: string) => {
+    const card = cardById.get(cardId);
+    const currentValue = showCompletedByCard[cardId] ?? card?.showCompletedTodos ?? true;
+    const nextValue = !currentValue;
     setShowCompletedByCard((prev) => ({
       ...prev,
-      [cardId]: !(prev[cardId] ?? true),
+      [cardId]: nextValue,
     }));
+    updateCardPreferencesMutation.mutate({
+      id: cardId,
+      data: {
+        showCompletedTodos: nextValue,
+        viewport: currentViewport,
+      },
+    });
   };
 
   const handleChangeQuickTodoDraft = (cardId: string, content: string) => {
@@ -1362,7 +1381,7 @@ export function DashboardPage() {
                     const sortedCardTodos = sortTodosForCardDisplay(
                       Array.isArray(cardTodos) ? cardTodos : [],
                     );
-                    const showCompleted = showCompletedByCard[card.id] ?? true;
+                    const showCompleted = showCompletedByCard[card.id] ?? card.showCompletedTodos ?? true;
                     const visibleCardTodos = showCompleted
                       ? sortedCardTodos
                       : sortedCardTodos.filter((todo) => !isCompletedTodo(todo));

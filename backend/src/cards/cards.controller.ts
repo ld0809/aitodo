@@ -3,6 +3,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CardsService } from './cards.service';
 import { CreateCardDto } from './dto/create-card.dto';
+import { UpdateCardPreferencesDto } from './dto/update-card-preferences.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { UpdateDashboardLayoutDto } from './dto/update-dashboard-layout.dto';
 import { UpdateLayoutDto } from './dto/update-layout.dto';
@@ -53,6 +54,15 @@ export class CardsController {
   @Patch('cards/:id/layout')
   updateLayout(@CurrentUser() user: { userId: string }, @Param('id') id: string, @Body() dto: UpdateLayoutDto) {
     return this.cardsService.updateLayout(user.userId, id, dto);
+  }
+
+  @Patch('cards/:id/preferences')
+  updatePreferences(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateCardPreferencesDto,
+  ) {
+    return this.cardsService.updatePreferences(user.userId, id, dto);
   }
 
   @Put('dashboard/layout')

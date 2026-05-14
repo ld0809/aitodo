@@ -74,6 +74,8 @@ describe('CardsService', () => {
   };
   let cardUserLayoutRepository: {
     find: jest.Mock;
+    findOne: jest.Mock;
+    create: jest.Mock;
     save: jest.Mock;
   };
   let tagRepository: {
@@ -106,6 +108,8 @@ describe('CardsService', () => {
     };
     cardUserLayoutRepository = {
       find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      create: jest.fn((value) => value),
       save: jest.fn(),
     };
     tagRepository = {
@@ -170,5 +174,33 @@ describe('CardsService', () => {
   it('rejects unsupported card status filters', async () => {
     await expect(service.findAll('owner-1', undefined, 'deleted' as never)).rejects.toBeInstanceOf(BadRequestException);
     expect(cardRepository.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('saves completed todo visibility as a user card preference', async () => {
+    const owner = createUser('owner-1', 'owner@test.com');
+    const card = createCard(owner);
+    const existingLayout = {
+      id: 'layout-1',
+      cardId: card.id,
+      userId: owner.id,
+      x: 1,
+      y: 2,
+      w: 1,
+      h: 3,
+      layoutsJson: null,
+      showCompletedTodos: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CardUserLayout;
+    cardRepository.findOne.mockResolvedValue(card);
+    cardUserLayoutRepository.findOne.mockResolvedValue(existingLayout);
+    cardUserLayoutRepository.find.mockResolvedValue([existingLayout]);
+    cardUserLayoutRepository.save.mockResolvedValue(existingLayout);
+
+    const result = await service.updatePreferences(owner.id, card.id, { showCompletedTodos: false });
+
+    expect(existingLayout.showCompletedTodos).toBe(false);
+    expect(cardUserLayoutRepository.save).toHaveBeenCalledWith(existingLayout);
+    expect(result.showCompletedTodos).toBe(false);
   });
 });

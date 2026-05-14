@@ -35,6 +35,11 @@ export interface UpdateLayoutDto {
   viewport?: LayoutViewport;
 }
 
+export interface UpdateCardPreferencesDto {
+  showCompletedTodos?: boolean;
+  viewport?: LayoutViewport;
+}
+
 export const cardsApi = {
   getAll: (viewport: LayoutViewport, status?: 'active' | 'archived') => {
     const searchParams = new URLSearchParams({ viewport });
@@ -59,4 +64,7 @@ export const cardsApi = {
 
   updateLayout: (id: string, data: UpdateLayoutDto) =>
     apiClient.patch<Card>(`/cards/${id}/layout`, data),
+
+  updatePreferences: (id: string, data: UpdateCardPreferencesDto) =>
+    apiClient.patch<Card>(`/cards/${id}/preferences`, data),
 };

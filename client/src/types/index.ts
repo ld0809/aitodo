@@ -114,6 +114,7 @@ export interface Card {
   h: number;
   pluginType: string;
   pluginConfigJson?: string;
+  showCompletedTodos?: boolean;
   tags: Tag[];
   participants?: CardParticipant[];
   todos?: Todo[];
