@@ -521,6 +521,16 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 10px 15px -3px rgba(0, 0, 0, 0.08);
 }
 
+.card.card--drag-over {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), var(--bg2));
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), var(--shadow);
+}
+
+.card.card--drop-disabled {
+  opacity: 0.72;
+}
+
 .card-header {
   padding: 16px;
   border-bottom: 1px solid var(--border);
@@ -661,6 +671,27 @@
   padding: 12px;
   overflow-y: auto;
   /* max-height: 400px; */
+}
+
+.todo-drag-shell {
+  border-radius: var(--r2);
+}
+
+.todo-drag-shell--enabled {
+  cursor: grab;
+}
+
+.todo-drag-shell--enabled .todo-item {
+  cursor: grab;
+}
+
+.todo-drag-shell--dragging {
+  opacity: 0.46;
+}
+
+.todo-drag-shell--dragging .todo-item {
+  border-color: var(--accent);
+  transform: none;
 }
 
 .add-card {

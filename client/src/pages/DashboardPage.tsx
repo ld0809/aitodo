@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import GridLayout, { noCompactor } from 'react-grid-layout';
@@ -344,6 +344,8 @@ export function DashboardPage() {
   const [focusedQuickInputCardId, setFocusedQuickInputCardId] = useState<string | null>(null);
   const [quickTodoDraftByCardId, setQuickTodoDraftByCardId] = useState<Record<string, string>>({});
   const [quickCreatingCardId, setQuickCreatingCardId] = useState<string | null>(null);
+  const [draggingTodo, setDraggingTodo] = useState<{ todoId: string; sourceCardId: string } | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<DashboardViewMode>(() => getStoredDashboardViewMode());
   const [showViewModeModal, setShowViewModeModal] = useState(false);
   const [selectedListFilterId, setSelectedListFilterId] = useState('all');
@@ -682,6 +684,34 @@ export function DashboardPage() {
     },
   });
 
+  const moveTodoToCardMutation = useMutation({
+    mutationFn: ({ todoId, cardId }: { todoId: string; cardId: string }) =>
+      todosApi.update(todoId, { cardId }),
+    onMutate: async ({ todoId, cardId }) => {
+      await queryClient.cancelQueries({ queryKey: ['todos', userScope] });
+      const previousTodos = queryClient.getQueryData<Todo[]>(['todos', userScope]);
+      queryClient.setQueryData(['todos', userScope], (current: Todo[] | undefined) => {
+        if (!Array.isArray(current)) {
+          return current;
+        }
+        return current.map((todo) => (todo.id === todoId ? { ...todo, cardId } : todo));
+      });
+      return { previousTodos };
+    },
+    onError: (error: unknown, _variables, context) => {
+      if (context?.previousTodos) {
+        queryClient.setQueryData(['todos', userScope], context.previousTodos);
+      }
+      alert(getErrorMessage(error, '移动待办失败'));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
+      setDraggingTodo(null);
+      setDragOverCardId(null);
+    },
+  });
+
   const deleteTodoMutation = useMutation({
     mutationFn: (id: string) => todosApi.delete(id),
     onSuccess: () => {
@@ -827,7 +857,13 @@ export function DashboardPage() {
       setDefaultTagIds([]);
       setActiveTodoCard(null);
     }
-    setEditingTodo(todo || null);
+    setEditingTodo(todo && card?.cardType === 'shared'
+      ? {
+          ...todo,
+          cardId: card.id,
+          tags: Array.isArray(card.tags) ? card.tags : [],
+        }
+      : todo || null);
     setShowTodoModal(true);
   };
 
@@ -960,6 +996,76 @@ export function DashboardPage() {
     setActiveProgressTodo(todo);
     setProgressDraft('');
     setShowProgressModal(true);
+  };
+
+  const canDragTodoBetweenCards = (todo: Todo, sourceCard: Card) => {
+    if (sourceCard.pluginType !== 'local_todo' || moveTodoToCardMutation.isPending) {
+      return false;
+    }
+    if (todo.userId === user?.id || todo.creatorUserId === user?.id) {
+      return true;
+    }
+    if (sourceCard.cardType !== 'shared') {
+      return false;
+    }
+    return sourceCard.userId === user?.id
+      || (Array.isArray(sourceCard.participants) && sourceCard.participants.some((participant) => participant.id === user?.id));
+  };
+
+  const canReceiveDraggedTodo = (targetCard: Card) => {
+    if (!draggingTodo || targetCard.id === draggingTodo.sourceCardId) {
+      return false;
+    }
+    if (targetCard.pluginType !== 'local_todo' || targetCard.status !== 'active') {
+      return false;
+    }
+    return targetCard.userId === user?.id || targetCard.cardType === 'shared';
+  };
+
+  const handleTodoDragStart = (event: DragEvent<HTMLDivElement>, todo: Todo, sourceCard: Card) => {
+    if (!canDragTodoBetweenCards(todo, sourceCard)) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-aitodo-todo-id', todo.id);
+    event.dataTransfer.setData('text/plain', todo.id);
+    setDraggingTodo({ todoId: todo.id, sourceCardId: sourceCard.id });
+  };
+
+  const handleTodoDragEnd = () => {
+    setDraggingTodo(null);
+    setDragOverCardId(null);
+  };
+
+  const handleCardDragOver = (event: DragEvent<HTMLDivElement>, targetCard: Card) => {
+    if (!canReceiveDraggedTodo(targetCard)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverCardId(targetCard.id);
+  };
+
+  const handleCardDragLeave = (event: DragEvent<HTMLDivElement>, targetCard: Card) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+    setDragOverCardId((current) => (current === targetCard.id ? null : current));
+  };
+
+  const handleCardDrop = (event: DragEvent<HTMLDivElement>, targetCard: Card) => {
+    if (!canReceiveDraggedTodo(targetCard)) {
+      return;
+    }
+    event.preventDefault();
+    const todoId = event.dataTransfer.getData('application/x-aitodo-todo-id') || draggingTodo?.todoId;
+    if (!todoId || targetCard.id === draggingTodo?.sourceCardId) {
+      setDraggingTodo(null);
+      setDragOverCardId(null);
+      return;
+    }
+    moveTodoToCardMutation.mutate({ todoId, cardId: targetCard.id });
   };
 
   const handleSaveProgress = () => {
@@ -1396,11 +1502,14 @@ export function DashboardPage() {
                       (hoveredCardId === card.id || focusedQuickInputCardId === card.id);
                     return (
                       <div
-                        className="card"
+                        className={`card ${dragOverCardId === card.id ? 'card--drag-over' : ''} ${draggingTodo && !canReceiveDraggedTodo(card) ? 'card--drop-disabled' : ''}`.trim()}
                         onMouseEnter={() => setHoveredCardId(card.id)}
                         onMouseLeave={() => {
                           setHoveredCardId((prev) => (prev === card.id ? null : prev));
                         }}
+                        onDragOver={(event) => handleCardDragOver(event, card)}
+                        onDragLeave={(event) => handleCardDragLeave(event, card)}
+                        onDrop={(event) => handleCardDrop(event, card)}
                       >
                         <div className="card-header">
                           {showQuickInput ? (
@@ -1528,8 +1637,18 @@ export function DashboardPage() {
                           </div>
                         </div>
                         <div className="card-body">
-                          {visibleCardTodos.map((todo: Todo) => (
-                            <TodoCard
+                          {visibleCardTodos.map((todo: Todo) => {
+                            const canDragTodo = canDragTodoBetweenCards(todo, card);
+                            return (
+                              <div
+                                key={todo.id}
+                                className={`todo-drag-shell ${canDragTodo ? 'todo-drag-shell--enabled' : ''} ${draggingTodo?.todoId === todo.id ? 'todo-drag-shell--dragging' : ''}`.trim()}
+                                draggable={canDragTodo}
+                                title={canDragTodo ? '拖动到其他卡片' : undefined}
+                                onDragStart={(event) => handleTodoDragStart(event, todo, card)}
+                                onDragEnd={handleTodoDragEnd}
+                              >
+                                <TodoCard
                               key={todo.id}
                               todo={todo}
                               tags={tags}
@@ -1544,8 +1663,10 @@ export function DashboardPage() {
                               onDelete={() => handleDeleteTodo(todo.id)}
                               canUpdateProgress={card.pluginType !== 'tapd'}
                               onOpenProgress={() => handleOpenProgressModal(todo)}
-                            />
-                          ))}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );

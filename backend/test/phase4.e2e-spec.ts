@@ -235,6 +235,25 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     expect(hiddenCardTodos).toHaveLength(0);
   });
 
+  it('shared card todo list includes fresh progress count after progress updates', async () => {
+    const addProgressRes = await request(getHttpApp())
+      .post(`${baseUrl}/todos/${sharedTodoId}/progress`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        content: '成员已补充共享待办进度',
+      });
+    expect(addProgressRes.status).toBe(201);
+    expect(getData<{ progressCount: number }>(addProgressRes.body).progressCount).toBe(1);
+
+    const sharedTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${sharedCardId}/todos`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(sharedTodosRes.status).toBe(200);
+    const sharedTodos = getData<Array<{ id: string; progressCount?: number }>>(sharedTodosRes.body);
+    const sharedTodo = sharedTodos.find((todo) => todo.id === sharedTodoId);
+    expect(sharedTodo?.progressCount).toBe(1);
+  });
+
   it('shared card participants can create and edit shared todos', async () => {
     const memberCreateTodoRes = await request(getHttpApp())
       .post(`${baseUrl}/todos`)

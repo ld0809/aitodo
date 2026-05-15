@@ -14,6 +14,7 @@ export interface PluginItem {
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';
+  progressCount?: number;
   createdAt: Date;
   updatedAt: Date;
   tags: PluginTagView[];
@@ -30,6 +31,7 @@ export interface CardTodoView {
   dueAt: Date | null;
   executeAt: Date | null;
   status: 'todo' | 'done' | 'completed';
+  progressCount?: number;
   tags: PluginTagView[];
   url?: string;
 }

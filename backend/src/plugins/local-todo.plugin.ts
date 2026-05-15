@@ -48,9 +48,11 @@ export class LocalTodoPlugin implements DataSourcePlugin {
       if (tagIds.length > 0) {
         queryBuilder.andWhere(
           new Brackets((qb) => {
-            qb.where('tag.id IN (:...tagIds)', { tagIds }).orWhere('todo.card_id = :cardId', {
-              cardId: ctx.card.id,
-            });
+            qb.where('todo.card_id = :cardId', { cardId: ctx.card.id }).orWhere(
+              new Brackets((tagQb) => {
+                tagQb.where('todo.card_id IS NULL').andWhere('tag.id IN (:...tagIds)', { tagIds });
+              }),
+            );
           }),
         );
       } else {
@@ -73,18 +75,20 @@ export class LocalTodoPlugin implements DataSourcePlugin {
 
     return todos.map<PluginItem>((todo) => {
       const creator = creatorById.get(todo.userId);
+      const effectiveTags = ctx.card.cardType === 'shared' ? (ctx.card.tags ?? []) : todo.tags;
       return {
         id: todo.id,
         content: todo.content,
         dueAt: todo.dueAt,
         executeAt: todo.executeAt,
         status: todo.status,
+        progressCount: todo.progressCount,
         creatorUserId: todo.userId,
         creatorName: creator?.nickname?.trim() || creator?.email || '',
         creatorRole: todo.userId === ctx.card.userId ? 'owner' : 'participant',
         createdAt: todo.createdAt,
         updatedAt: todo.updatedAt,
-        tags: todo.tags.map((tag) => ({
+        tags: effectiveTags.map((tag) => ({
           id: tag.id,
           name: tag.name,
           color: tag.color,
@@ -128,6 +132,7 @@ export class LocalTodoPlugin implements DataSourcePlugin {
       dueAt: item.dueAt,
       executeAt: item.executeAt,
       status: item.status,
+      progressCount: item.progressCount,
       tags: item.tags,
     }));
   }

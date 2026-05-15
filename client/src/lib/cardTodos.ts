@@ -14,7 +14,7 @@ export function getTodosForCard(
   const relatedByTags = cardTagIds.size === 0
     ? []
     : (Array.isArray(todos) ? todos : []).filter((todo) =>
-        (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.has(tag.id)),
+        !todo.cardId && (Array.isArray(todo.tags) ? todo.tags : []).some((tag) => cardTagIds.has(tag.id)),
       );
 
   return Array.from(new Map([...relatedByCard, ...relatedByTags].map((todo) => [todo.id, todo])).values());

@@ -192,6 +192,14 @@ export class TodosService {
     if (dto.status !== undefined) {
       todo.status = dto.status as 'todo' | 'done' | 'completed';
     }
+    if (dto.cardId !== undefined) {
+      const targetCard = await this.resolveTodoCardForUpdate(userId, todo, dto.cardId);
+      todo.cardId = targetCard?.id ?? null;
+      if (targetCard?.cardType === 'shared') {
+        todo.tags = [...(targetCard.tags ?? [])];
+      }
+      await this.refreshSharedTodoAssignees(todo);
+    }
     if (dto.tagIds !== undefined) {
       todo.tags = await this.resolveTodoTags(todo, userId, dto.tagIds);
     }
@@ -321,6 +329,7 @@ export class TodosService {
 
   private async refreshSharedTodoAssignees(todo: Todo) {
     if (!todo.cardId) {
+      todo.assignees = [];
       return;
     }
 
@@ -331,6 +340,7 @@ export class TodosService {
       },
     });
     if (!card || card.cardType !== 'shared') {
+      todo.assignees = [];
       return;
     }
 
@@ -367,6 +377,75 @@ export class TodosService {
     }
 
     return [...(card.tags ?? [])];
+  }
+
+  private async resolveTodoCardForUpdate(
+    userId: string,
+    todo: Pick<Todo, 'userId' | 'cardId'>,
+    cardId: string | null,
+  ) {
+    const canMoveSourceTodo = await this.canMoveTodoBetweenCards(userId, todo);
+    if (!canMoveSourceTodo) {
+      throw new ForbiddenException('only todo owner can move todo between cards');
+    }
+
+    if (cardId === null) {
+      return null;
+    }
+
+    const card = await this.cardRepository.findOne({
+      where: { id: cardId },
+      relations: {
+        participants: true,
+        tags: true,
+      },
+    });
+
+    if (!card || card.status !== 'active') {
+      throw new NotFoundException('card not found');
+    }
+
+    if (card.pluginType !== 'local_todo') {
+      throw new BadRequestException('only local todo cards can receive moved todos');
+    }
+
+    if (card.cardType === 'shared') {
+      const canAccessSharedCard = card.userId === userId
+        || (card.participants ?? []).some((participant) => participant.id === userId);
+      if (!canAccessSharedCard) {
+        throw new ForbiddenException('only shared card participants can move todo into this card');
+      }
+      return card;
+    }
+
+    if (card.userId !== userId) {
+      throw new ForbiddenException('only card owner can move todo into this card');
+    }
+
+    return card;
+  }
+
+  private async canMoveTodoBetweenCards(userId: string, todo: Pick<Todo, 'userId' | 'cardId'>) {
+    if (todo.userId === userId) {
+      return true;
+    }
+
+    if (!todo.cardId) {
+      return false;
+    }
+
+    const sourceCard = await this.cardRepository.findOne({
+      where: { id: todo.cardId },
+      relations: {
+        participants: true,
+      },
+    });
+
+    if (!sourceCard || sourceCard.cardType !== 'shared') {
+      return false;
+    }
+
+    return sourceCard.userId === userId || (sourceCard.participants ?? []).some((participant) => participant.id === userId);
   }
 
   private extractMentionTokens(content: string) {

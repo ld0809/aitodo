@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayUnique, IsArray, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { ArrayUnique, IsArray, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 
 export class UpdateTodoDto {
   @IsOptional()
@@ -25,4 +25,9 @@ export class UpdateTodoDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   tagIds?: string[];
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  cardId?: string | null;
 }

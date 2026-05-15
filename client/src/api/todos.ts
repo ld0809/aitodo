@@ -15,6 +15,7 @@ export interface UpdateTodoDto {
   executeAt?: string;
   status?: 'todo' | 'done' | 'completed';
   tagIds?: string[];
+  cardId?: string | null;
 }
 
 export interface CreateTodoProgressDto {
