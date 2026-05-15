@@ -151,8 +151,16 @@ export function TodoModal({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isSharedCard = (card?.cardType ?? 'personal') === 'shared';
   const availableTags = useMemo(
-    () => (isSharedCard ? (Array.isArray(card?.tags) ? card.tags : []) : (Array.isArray(tags) ? tags : [])),
-    [card, isSharedCard, tags],
+    () => {
+      if (!isSharedCard) {
+        return Array.isArray(tags) ? tags : [];
+      }
+      if (todo) {
+        return Array.isArray(todo.tags) ? todo.tags : [];
+      }
+      return Array.isArray(card?.tags) ? card.tags : [];
+    },
+    [card, isSharedCard, tags, todo],
   );
   const availableTagIdSet = useMemo(() => new Set(availableTags.map((tag) => tag.id)), [availableTags]);
 
@@ -186,11 +194,9 @@ export function TodoModal({
       setContent(todo.content);
       setDueAt(toDateTimeLocalInputValue(todo.dueAt));
       setExecuteAt(toDateTimeLocalInputValue(todo.executeAt));
-      setSelectedTagIds(isSharedCard
-        ? availableTags.map((tag) => tag.id)
-        : (Array.isArray(todo.tags) ? todo.tags : [])
-            .map((t) => t.id)
-            .filter((tagId) => availableTagIdSet.has(tagId)));
+      setSelectedTagIds((Array.isArray(todo.tags) ? todo.tags : [])
+        .map((t) => t.id)
+        .filter((tagId) => availableTagIdSet.has(tagId)));
       setActiveMention(null);
       setMentionAnchor(null);
       setHighlightedMentionIndex(0);
@@ -268,9 +274,7 @@ export function TodoModal({
         content: content.trim(),
         dueAt: dueAt || undefined,
         executeAt: executeAt || undefined,
-        tagIds: isSharedCard
-          ? availableTags.map((tag) => tag.id)
-          : selectedTagIds.filter((tagId) => availableTagIdSet.has(tagId)),
+        tagIds: isSharedCard ? undefined : selectedTagIds.filter((tagId) => availableTagIdSet.has(tagId)),
       };
       onSave(data);
       return;
@@ -420,7 +424,7 @@ export function TodoModal({
                 ))}
               </div>
               {isSharedCard ? (
-                <div className="mention-hint">共享卡片待办会自动继承当前卡片的全部标签。</div>
+                <div className="mention-hint">{todo ? '共享卡片待办编辑时保留待办自身标签。' : '共享卡片新待办默认使用当前卡片的全部标签。'}</div>
               ) : (
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                   <input

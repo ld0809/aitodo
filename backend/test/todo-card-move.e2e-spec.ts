@@ -55,7 +55,7 @@ describe('Todo card move (e2e)', () => {
     return accessToken;
   };
 
-  it('moves a local todo from one personal card to another by updating cardId', async () => {
+  it('moves a local todo between cards by updating cardId without replacing its tags', async () => {
     token = await registerAndLogin(email);
 
     const tagRes = await request(app.getHttpServer())
@@ -64,6 +64,13 @@ describe('Todo card move (e2e)', () => {
       .send({ name: `move-tag-${Date.now()}`, color: '#3b82f6' });
     expect(tagRes.status).toBe(201);
     const tagId = getData<{ id: string }>(tagRes.body).id;
+
+    const sharedTagRes = await request(app.getHttpServer())
+      .post(`${baseUrl}/tags`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: `move-shared-tag-${Date.now()}`, color: '#f97316' });
+    expect(sharedTagRes.status).toBe(201);
+    const sharedTagId = getData<{ id: string }>(sharedTagRes.body).id;
 
     const sourceCardRes = await request(app.getHttpServer())
       .post(`${baseUrl}/cards`)
@@ -85,6 +92,18 @@ describe('Todo card move (e2e)', () => {
       });
     expect(targetCardRes.status).toBe(201);
     const targetCardId = getData<{ id: string }>(targetCardRes.body).id;
+
+    const sharedCardRes = await request(app.getHttpServer())
+      .post(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Move Shared Target',
+        cardType: 'shared',
+        pluginType: 'local_todo',
+        tagIds: [sharedTagId],
+      });
+    expect(sharedCardRes.status).toBe(201);
+    const sharedCardId = getData<{ id: string }>(sharedCardRes.body).id;
 
     const todoRes = await request(app.getHttpServer())
       .post(`${baseUrl}/todos`)
@@ -120,6 +139,23 @@ describe('Todo card move (e2e)', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(targetAfterMoveRes.status).toBe(200);
     expect(getData<Array<{ id: string }>>(targetAfterMoveRes.body).map((todo) => todo.id)).toContain(todoId);
+
+    const moveToSharedRes = await request(app.getHttpServer())
+      .patch(`${baseUrl}/todos/${todoId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cardId: sharedCardId });
+    expect(moveToSharedRes.status).toBe(200);
+    const movedToSharedTodo = getData<{ cardId: string; tags: Array<{ id: string }> }>(moveToSharedRes.body);
+    expect(movedToSharedTodo.cardId).toBe(sharedCardId);
+    expect(movedToSharedTodo.tags.map((tag) => tag.id)).toEqual([tagId]);
+
+    const sharedAfterMoveRes = await request(app.getHttpServer())
+      .get(`${baseUrl}/cards/${sharedCardId}/todos`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(sharedAfterMoveRes.status).toBe(200);
+    const sharedTodos = getData<Array<{ id: string; tags: Array<{ id: string }> }>>(sharedAfterMoveRes.body);
+    const sharedTodo = sharedTodos.find((todo) => todo.id === todoId);
+    expect(sharedTodo?.tags.map((tag) => tag.id)).toEqual([tagId]);
   });
 
   it('lets a shared card participant move a shared todo to another shared card', async () => {
@@ -197,7 +233,7 @@ describe('Todo card move (e2e)', () => {
     const movedTodo = getData<{ cardId: string; assignees: Array<{ email: string }>; tags: Array<{ id: string }> }>(moveRes.body);
     expect(movedTodo.cardId).toBe(targetCardId);
     expect(movedTodo.assignees.map((assignee) => assignee.email.toLowerCase())).toContain(sharedMemberEmail.toLowerCase());
-    expect(movedTodo.tags.map((tag) => tag.id)).toEqual([targetTagId]);
+    expect(movedTodo.tags.map((tag) => tag.id)).toEqual([sourceTagId]);
 
     const memberSourceAfterMoveRes = await request(app.getHttpServer())
       .get(`${baseUrl}/cards/${sourceCard.id}/todos`)
@@ -212,6 +248,6 @@ describe('Todo card move (e2e)', () => {
     const targetTodos = getData<Array<{ id: string; tags: Array<{ id: string }> }>>(memberTargetAfterMoveRes.body);
     const targetTodo = targetTodos.find((todo) => todo.id === todoId);
     expect(targetTodo).toBeDefined();
-    expect(targetTodo?.tags.map((tag) => tag.id)).toEqual([targetTagId]);
+    expect(targetTodo?.tags.map((tag) => tag.id)).toEqual([sourceTagId]);
   });
 });

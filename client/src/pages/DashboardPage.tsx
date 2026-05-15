@@ -861,7 +861,6 @@ export function DashboardPage() {
       ? {
           ...todo,
           cardId: card.id,
-          tags: Array.isArray(card.tags) ? card.tags : [],
         }
       : todo || null);
     setShowTodoModal(true);
@@ -1503,15 +1502,17 @@ export function DashboardPage() {
                     return (
                       <div
                         className={`card ${dragOverCardId === card.id ? 'card--drag-over' : ''} ${draggingTodo && !canReceiveDraggedTodo(card) ? 'card--drop-disabled' : ''}`.trim()}
-                        onMouseEnter={() => setHoveredCardId(card.id)}
-                        onMouseLeave={() => {
-                          setHoveredCardId((prev) => (prev === card.id ? null : prev));
-                        }}
                         onDragOver={(event) => handleCardDragOver(event, card)}
                         onDragLeave={(event) => handleCardDragLeave(event, card)}
                         onDrop={(event) => handleCardDrop(event, card)}
                       >
-                        <div className="card-header">
+                        <div
+                          className="card-header"
+                          onMouseEnter={() => setHoveredCardId(card.id)}
+                          onMouseLeave={() => {
+                            setHoveredCardId((prev) => (prev === card.id ? null : prev));
+                          }}
+                        >
                           {showQuickInput ? (
                             <input
                               className="card-quick-input"

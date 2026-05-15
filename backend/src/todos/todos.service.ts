@@ -195,9 +195,6 @@ export class TodosService {
     if (dto.cardId !== undefined) {
       const targetCard = await this.resolveTodoCardForUpdate(userId, todo, dto.cardId);
       todo.cardId = targetCard?.id ?? null;
-      if (targetCard?.cardType === 'shared') {
-        todo.tags = [...(targetCard.tags ?? [])];
-      }
       await this.refreshSharedTodoAssignees(todo);
     }
     if (dto.tagIds !== undefined) {

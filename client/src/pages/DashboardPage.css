@@ -573,7 +573,8 @@
   position: relative;
 }
 
-.card:hover .card-actions {
+.card-header:hover .card-actions,
+.card-header:focus-within .card-actions {
   opacity: 1;
 }
 

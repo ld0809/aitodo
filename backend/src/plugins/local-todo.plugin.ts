@@ -75,7 +75,6 @@ export class LocalTodoPlugin implements DataSourcePlugin {
 
     return todos.map<PluginItem>((todo) => {
       const creator = creatorById.get(todo.userId);
-      const effectiveTags = ctx.card.cardType === 'shared' ? (ctx.card.tags ?? []) : todo.tags;
       return {
         id: todo.id,
         content: todo.content,
@@ -88,7 +87,7 @@ export class LocalTodoPlugin implements DataSourcePlugin {
         creatorRole: todo.userId === ctx.card.userId ? 'owner' : 'participant',
         createdAt: todo.createdAt,
         updatedAt: todo.updatedAt,
-        tags: effectiveTags.map((tag) => ({
+        tags: todo.tags.map((tag) => ({
           id: tag.id,
           name: tag.name,
           color: tag.color,

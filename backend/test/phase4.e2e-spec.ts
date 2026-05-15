@@ -19,6 +19,7 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
   let hiddenSharedCardId = '';
   let sharedTodoId = '';
   let ownerTagId = '';
+  let secondOwnerTagId = '';
   let memberMentionKey = '';
   let secondMemberMentionKey = '';
 
@@ -80,6 +81,13 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
       .send({ name: `phase4-shared-${Date.now()}`, color: '#22c55e' });
     expect(createTagRes.status).toBe(201);
     ownerTagId = getData<{ id: string }>(createTagRes.body).id;
+
+    const createSecondTagRes = await request(getHttpApp())
+      .post(`${baseUrl}/tags`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `phase4-shared-second-${Date.now()}`, color: '#f97316' });
+    expect(createSecondTagRes.status).toBe(201);
+    secondOwnerTagId = getData<{ id: string }>(createSecondTagRes.body).id;
 
     const externalEmail = 'external-user@test.com';
     const createInvalidCardRes = await request(getHttpApp())
@@ -252,6 +260,45 @@ describe('Phase 4 - Shared Card Collaboration (e2e)', () => {
     const sharedTodos = getData<Array<{ id: string; progressCount?: number }>>(sharedTodosRes.body);
     const sharedTodo = sharedTodos.find((todo) => todo.id === sharedTodoId);
     expect(sharedTodo?.progressCount).toBe(1);
+  });
+
+  it('shared card todo list returns todo tags instead of current card tags', async () => {
+    const cardRes = await request(getHttpApp())
+      .post(`${baseUrl}/cards`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Phase4 Shared Tag Snapshot Card',
+        cardType: 'shared',
+        pluginType: 'local_todo',
+        tagIds: [ownerTagId],
+        participantEmails: [memberEmail],
+      });
+    expect(cardRes.status).toBe(201);
+    const cardId = getData<{ id: string }>(cardRes.body).id;
+
+    const todoRes = await request(getHttpApp())
+      .post(`${baseUrl}/todos`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        cardId,
+        content: '用于验证共享待办自身标签',
+      });
+    expect(todoRes.status).toBe(201);
+    const todoId = getData<{ id: string }>(todoRes.body).id;
+
+    const updateCardTagsRes = await request(getHttpApp())
+      .patch(`${baseUrl}/cards/${cardId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ tagIds: [secondOwnerTagId] });
+    expect(updateCardTagsRes.status).toBe(200);
+
+    const sharedTodosRes = await request(getHttpApp())
+      .get(`${baseUrl}/cards/${cardId}/todos`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(sharedTodosRes.status).toBe(200);
+    const sharedTodos = getData<Array<{ id: string; tags: Array<{ id: string }> }>>(sharedTodosRes.body);
+    const sharedTodo = sharedTodos.find((todo) => todo.id === todoId);
+    expect(sharedTodo?.tags.map((tag) => tag.id)).toEqual([ownerTagId]);
   });
 
   it('shared card participants can create and edit shared todos', async () => {
