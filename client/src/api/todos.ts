@@ -1,4 +1,10 @@
-import type { Todo, TodoProgressEntry } from '../types';
+import type {
+  Todo,
+  TodoAiApplySuggestionResult,
+  TodoAiMessageResult,
+  TodoAiSessionPayload,
+  TodoProgressEntry,
+} from '../types';
 import apiClient from './client';
 
 export interface CreateTodoDto {
@@ -22,6 +28,10 @@ export interface CreateTodoProgressDto {
   content: string;
 }
 
+export interface SendTodoAiMessageDto {
+  message: string;
+}
+
 export const todosApi = {
   getAll: () => apiClient.get<Todo[]>('/todos'),
 
@@ -41,4 +51,15 @@ export const todosApi = {
 
   createProgress: (id: string, data: CreateTodoProgressDto) =>
     apiClient.post<TodoProgressEntry & { progressCount: number }>(`/todos/${id}/progress`, data),
+
+  getAiSession: (id: string) =>
+    apiClient.get<TodoAiSessionPayload>(`/todos/${id}/ai/session`),
+
+  sendAiMessage: (id: string, data: SendTodoAiMessageDto) =>
+    apiClient.post<TodoAiMessageResult>(`/todos/${id}/ai/messages`, data),
+
+  applyAiSuggestion: (todoId: string, suggestionId: string) =>
+    apiClient.post<TodoAiApplySuggestionResult>(`/todos/${todoId}/ai/suggestions/${suggestionId}/apply`, {
+      target: 'progress',
+    }),
 };

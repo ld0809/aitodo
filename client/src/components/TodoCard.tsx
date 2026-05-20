@@ -16,6 +16,8 @@ interface TodoCardProps {
   readOnly?: boolean;
   progressButtonTitle?: string;
   showProgressButton?: boolean;
+  canUseAi?: boolean;
+  onOpenAi?: () => void;
   className?: string;
   onCardClick?: () => void;
   headerAddon?: ReactNode;
@@ -33,6 +35,8 @@ export function TodoCard({
   readOnly = false,
   progressButtonTitle = '更新进度',
   showProgressButton = true,
+  canUseAi = false,
+  onOpenAi,
   className,
   onCardClick,
   headerAddon,
@@ -106,7 +110,7 @@ export function TodoCard({
       }}
     >
       <div className="todo-row">
-        {(showToggle || (canUpdateProgress && showProgressButton)) && (
+        {(showToggle || (canUpdateProgress && showProgressButton) || canUseAi) && (
           <div className="todo-left">
             {showToggle && (
               <div
@@ -131,6 +135,20 @@ export function TodoCard({
                 }}
               >
                 {todo.progressCount ?? 0}
+              </button>
+            )}
+            {canUseAi && (
+              <button
+                type="button"
+                className="todo-ai-entry-btn"
+                title="AI 对话"
+                aria-label="AI 对话"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAi?.();
+                }}
+              >
+                AI
               </button>
             )}
           </div>

@@ -9,13 +9,14 @@ import { cardsApi, type CreateCardDto, type UpdateCardDto } from '../api/cards';
 import { reportsApi, type AiReportResult } from '../api/reports';
 import { tagsApi, type CreateTagDto, type UpdateTagDto } from '../api/tags';
 import { usersApi } from '../api/users';
-import type { Todo, Card, LayoutViewport, TodoProgressEntry, Tag } from '../types';
+import type { Todo, Card, LayoutViewport, TodoAiSessionPayload, TodoProgressEntry, Tag } from '../types';
 import { Header } from '../components/Header';
 import { TodoCard } from '../components/TodoCard';
 import { CardModal } from '../components/CardModal';
 import { TodoModal } from '../components/TodoModal';
 import { TagModal } from '../components/TagModal';
 import { ProgressModal } from '../components/ProgressModal';
+import { TodoAiDrawer } from '../components/TodoAiDrawer';
 import { Button } from '../components/ui/Button';
 import { getTodosForCard, isCompletedTodo } from '../lib/cardTodos';
 import { compareTodosForCardDisplay, sortTodosForCardDisplay } from '../lib/todoSort';
@@ -242,6 +243,24 @@ function ExternalLinkIcon() {
   );
 }
 
+function AiIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M10 3.5l1.35 3.15L14.5 8l-3.15 1.35L10 12.5 8.65 9.35 5.5 8l3.15-1.35z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.25 12.75l.75 1.75 1.75.75-1.75.75-.75 1.75-.75-1.75-1.75-.75 1.75-.75zM15.25 12.5l.55 1.25 1.25.55-1.25.55-.55 1.25-.55-1.25-1.25-.55 1.25-.55z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function getStoredDashboardViewMode(): DashboardViewMode {
   if (typeof window === 'undefined') {
     return 'board';
@@ -249,6 +268,12 @@ function getStoredDashboardViewMode(): DashboardViewMode {
 
   const storedValue = window.localStorage.getItem(DASHBOARD_VIEW_MODE_STORAGE_KEY);
   return storedValue === 'list' ? 'list' : 'board';
+}
+
+function mergeTodoAiSuggestions<T extends { id: string }>(currentSuggestions: T[], nextSuggestions: T[]) {
+  return Array.from(
+    new Map([...currentSuggestions, ...nextSuggestions].map((suggestion) => [suggestion.id, suggestion])).values(),
+  );
 }
 
 function intersectsHorizontally(left: GridLayoutItem, right: GridLayoutItem): boolean {
@@ -332,6 +357,10 @@ export function DashboardPage() {
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [activeTodoCard, setActiveTodoCard] = useState<Card | null>(null);
   const [activeProgressTodo, setActiveProgressTodo] = useState<Todo | null>(null);
+  const [activeAiTodo, setActiveAiTodo] = useState<Todo | null>(null);
+  const [aiChatDraft, setAiChatDraft] = useState('');
+  const [aiChatError, setAiChatError] = useState<string | null>(null);
+  const [applyingAiSuggestionId, setApplyingAiSuggestionId] = useState<string | null>(null);
   const defaultLastWeekRange = getDefaultLastWeekRange();
   const [reportStartDate, setReportStartDate] = useState(defaultLastWeekRange.startDate);
   const [reportEndDate, setReportEndDate] = useState(defaultLastWeekRange.endDate);
@@ -500,6 +529,12 @@ export function DashboardPage() {
     queryKey: ['todo-progress', userScope, activeProgressTodo?.id],
     enabled: !!activeProgressTodo?.id && showProgressModal,
     queryFn: () => todosApi.getProgress(activeProgressTodo!.id).then((res) => res.data as TodoProgressEntry[]),
+  });
+
+  const { data: activeAiSession, isLoading: aiSessionLoading } = useQuery({
+    queryKey: ['todo-ai-session', userScope, activeAiTodo?.id],
+    enabled: !!activeAiTodo?.id,
+    queryFn: () => todosApi.getAiSession(activeAiTodo!.id).then((res) => res.data),
   });
 
   const cardById = useMemo(
@@ -739,6 +774,92 @@ export function DashboardPage() {
       setProgressDraft('');
       setShowProgressModal(false);
       setActiveProgressTodo(null);
+    },
+  });
+
+  const sendTodoAiMessageMutation = useMutation({
+    mutationFn: ({ id, message }: { id: string; message: string }) =>
+      todosApi.sendAiMessage(id, { message }),
+    onMutate: async ({ id, message }) => {
+      setAiChatDraft('');
+      setAiChatError(null);
+      await queryClient.cancelQueries({ queryKey: ['todo-ai-session', userScope, id] });
+      const previousSession = queryClient.getQueryData<TodoAiSessionPayload>(['todo-ai-session', userScope, id]);
+      const now = new Date().toISOString();
+      const fallbackSession = previousSession?.session ?? {
+        id: `optimistic-session-${id}`,
+        todoId: id,
+        sessionKey: `aitodo:todo:${id}`,
+        status: 'active' as const,
+        lastMessageAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      queryClient.setQueryData<TodoAiSessionPayload>(['todo-ai-session', userScope, id], {
+        session: {
+          ...fallbackSession,
+          lastMessageAt: now,
+        },
+        messages: [
+          ...(previousSession?.messages ?? []),
+          {
+            id: `optimistic-user-message-${Date.now()}`,
+            sessionId: fallbackSession.id,
+            todoId: id,
+            userId: user?.id ?? userScope,
+            role: 'user',
+            content: message,
+            openClawDispatchId: null,
+            createdAt: now,
+          },
+        ],
+        suggestions: previousSession?.suggestions ?? [],
+      });
+
+      return { previousSession };
+    },
+    onSuccess: (res, variables) => {
+      setAiChatDraft('');
+      setAiChatError(null);
+      queryClient.setQueryData<TodoAiSessionPayload>(['todo-ai-session', userScope, variables.id], (current) => ({
+        session: res.data.session,
+        messages: [
+          ...(current?.messages ?? []).filter((message) => !message.id.startsWith('optimistic-user-message-')),
+          res.data.userMessage,
+          res.data.assistantMessage,
+        ],
+        suggestions: mergeTodoAiSuggestions(current?.suggestions ?? [], res.data.suggestions),
+      }));
+      queryClient.invalidateQueries({ queryKey: ['todo-ai-session', userScope, variables.id] });
+    },
+    onError: (error: unknown, variables, context) => {
+      if (context?.previousSession) {
+        queryClient.setQueryData(['todo-ai-session', userScope, variables.id], context.previousSession);
+      }
+      setAiChatError(getErrorMessage(error, 'AI 对话失败，请确认 OpenClaw 已连接。'));
+    },
+  });
+
+  const applyTodoAiSuggestionMutation = useMutation({
+    mutationFn: ({ todoId, suggestionId }: { todoId: string; suggestionId: string }) =>
+      todosApi.applyAiSuggestion(todoId, suggestionId),
+    onMutate: ({ suggestionId }) => {
+      setApplyingAiSuggestionId(suggestionId);
+    },
+    onSuccess: (_res, variables) => {
+      setAiChatError(null);
+      queryClient.invalidateQueries({ queryKey: ['todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['card-todos', userScope] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['todo-progress-inline'] });
+      queryClient.invalidateQueries({ queryKey: ['todo-ai-session', userScope, variables.todoId] });
+    },
+    onError: (error: unknown) => {
+      setAiChatError(getErrorMessage(error, '沉淀进度失败'));
+    },
+    onSettled: () => {
+      setApplyingAiSuggestionId(null);
     },
   });
 
@@ -995,6 +1116,30 @@ export function DashboardPage() {
     setActiveProgressTodo(todo);
     setProgressDraft('');
     setShowProgressModal(true);
+  };
+
+  const handleOpenAiDrawer = (todo: Todo) => {
+    setActiveAiTodo(todo);
+    setAiChatDraft('');
+    setAiChatError(null);
+  };
+
+  const handleSendAiMessage = () => {
+    if (!activeAiTodo) {
+      return;
+    }
+    const message = aiChatDraft.trim();
+    if (!message) {
+      return;
+    }
+    sendTodoAiMessageMutation.mutate({ id: activeAiTodo.id, message });
+  };
+
+  const handleApplyAiSuggestion = (suggestionId: string) => {
+    if (!activeAiTodo) {
+      return;
+    }
+    applyTodoAiSuggestionMutation.mutate({ todoId: activeAiTodo.id, suggestionId });
   };
 
   const canDragTodoBetweenCards = (todo: Todo, sourceCard: Card) => {
@@ -1664,6 +1809,8 @@ export function DashboardPage() {
                               onDelete={() => handleDeleteTodo(todo.id)}
                               canUpdateProgress={card.pluginType !== 'tapd'}
                               onOpenProgress={() => handleOpenProgressModal(todo)}
+                              canUseAi={card.pluginType !== 'tapd'}
+                              onOpenAi={() => handleOpenAiDrawer(todo)}
                                 />
                               </div>
                             );
@@ -1767,6 +1914,8 @@ export function DashboardPage() {
                         onDelete={() => handleDeleteTodo(entry.todo.id)}
                         showToggle={entry.canToggle}
                         canUpdateProgress={entry.canUpdateProgress}
+                        canUseAi={entry.canUpdateProgress}
+                        onOpenAi={() => handleOpenAiDrawer(entry.todo)}
                         showProgressButton={false}
                         onOpenProgress={() => setSelectedListTodoId(entry.todo.id)}
                         progressButtonTitle="在右侧查看进度"
@@ -1910,6 +2059,17 @@ export function DashboardPage() {
           )}
           {!selectedListTodoEntry.isExternal && selectedListTodoEntry.canUpdateProgress && (
             <Button
+              variant="secondary"
+              className="list-mode-fab list-mode-fab--secondary"
+              onClick={() => handleOpenAiDrawer(selectedListTodoEntry.todo)}
+              title="AI 对话"
+              aria-label="AI 对话"
+            >
+              <AiIcon />
+            </Button>
+          )}
+          {!selectedListTodoEntry.isExternal && selectedListTodoEntry.canUpdateProgress && (
+            <Button
               variant="primary"
               className="list-mode-fab"
               onClick={() => handleOpenProgressModal(selectedListTodoEntry.todo)}
@@ -2001,6 +2161,27 @@ export function DashboardPage() {
           onClose={() => {
             setShowProgressModal(false);
             setActiveProgressTodo(null);
+          }}
+        />
+      )}
+
+      {activeAiTodo && (
+        <TodoAiDrawer
+          todo={activeAiTodo}
+          messages={activeAiSession?.messages ?? []}
+          suggestions={activeAiSession?.suggestions ?? []}
+          draft={aiChatDraft}
+          isLoading={aiSessionLoading}
+          isSending={sendTodoAiMessageMutation.isPending}
+          applyingSuggestionId={applyingAiSuggestionId}
+          errorMessage={aiChatError}
+          onDraftChange={setAiChatDraft}
+          onSend={handleSendAiMessage}
+          onApplySuggestion={handleApplyAiSuggestion}
+          onClose={() => {
+            setActiveAiTodo(null);
+            setAiChatDraft('');
+            setAiChatError(null);
           }}
         />
       )}

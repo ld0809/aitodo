@@ -59,6 +59,19 @@ interface PendingAiReportRequest {
   timeout: NodeJS.Timeout;
 }
 
+interface TodoAiChatContext {
+  todoId: string;
+  cardId?: string | null;
+  todoContent: string;
+  userId: string;
+  userIdentity: string;
+  message: string;
+  history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
 @Injectable()
 export class OpenClawService implements OnModuleInit, OnModuleDestroy {
   private webSocketServer: WebSocketServer | null = null;
@@ -191,6 +204,78 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
         this.rejectPendingAiReportRequest(dispatchId, new Error(this.getErrorMessage(error)));
       }
     });
+  }
+
+  async requestTodoAiChat(context: TodoAiChatContext): Promise<{ dispatchId: string; result: string }> {
+    const binding = await this.bindingRepository.findOne({ where: { userId: context.userId } });
+    if (!binding) {
+      throw new BadRequestException('请先在设置中绑定 OpenClaw，再使用待办 AI 对话。');
+    }
+
+    const socket = this.pickActiveSocket(context.userId);
+    if (!socket) {
+      throw new BadRequestException('当前 OpenClaw 未连接，请先在本地 OpenClaw Gateway 中完成连接。');
+    }
+
+    const dispatchId = randomUUID();
+    const timeoutMs = Math.max(1_000, Number(binding.timeoutSeconds || 900) * 1_000);
+    const payload = {
+      type: 'dispatch.todo',
+      transport: 'openclaw_channel_plugin',
+      channel: this.resolveChannelCode(),
+      dispatchId,
+      deviceLabel: binding.deviceLabel,
+      timeoutSeconds: binding.timeoutSeconds,
+      sessionKey: this.buildSessionKey(context.todoId),
+      task: {
+        message: this.buildTodoAiChatPrompt(context),
+        meta: {
+          source: 'aitodo-todo-chat',
+          todoId: context.todoId,
+          cardId: context.cardId ?? null,
+          userId: context.userId,
+          returnStructuredSuggestions: true,
+          recommendedAgentRoute: 'todo-copilot',
+        },
+      },
+    };
+
+    const result = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingAiReportRequests.delete(dispatchId);
+        reject(new Error('openclaw todo ai chat timed out'));
+      }, timeoutMs);
+
+      this.pendingAiReportRequests.set(dispatchId, {
+        userId: context.userId,
+        resolve: (text) => {
+          clearTimeout(timeout);
+          resolve(text);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout,
+      });
+
+      try {
+        this.sendSocketMessage(socket, payload);
+        void this.bindingRepository.update(
+          { id: binding.id },
+          {
+            connectionStatus: 'connected',
+            lastDispatchedAt: new Date(),
+            lastSeenAt: new Date(),
+            lastError: null,
+          },
+        );
+      } catch (error) {
+        this.rejectPendingAiReportRequest(dispatchId, new Error(this.getErrorMessage(error)));
+      }
+    });
+
+    return { dispatchId, result };
   }
 
   async getMyBinding(userId: string): Promise<OpenClawBindingResponse> {
@@ -848,6 +933,26 @@ export class OpenClawService implements OnModuleInit, OnModuleDestroy {
 
   private buildProgressContent(resultText: string) {
     return `【OpenClaw方案设计】\n${resultText}`;
+  }
+
+  private buildTodoAiChatPrompt(context: TodoAiChatContext) {
+    const history = (context.history ?? [])
+      .slice(-8)
+      .map((item) => `${item.role === 'user' ? '用户' : 'AI'}：${item.content}`)
+      .join('\n');
+
+    return [
+      '你是 AI 待办系统里的待办协作助理，需要围绕单个待办和用户持续对话。',
+      `当前用户：${context.userIdentity}`,
+      `待办 ID：${context.todoId}`,
+      `待办内容：${context.todoContent}`,
+      history ? `最近对话：\n${history}` : '最近对话：暂无',
+      `用户本轮输入：${context.message}`,
+      '回复要求：',
+      '1. 使用中文，直接回答用户本轮问题。',
+      '2. 如果有适合沉淀到待办进度里的结论、计划、风险、下一步，请在回复末尾增加「建议沉淀为进度：」并给出一段完整进度内容。',
+      '3. 不要声称已经修改待办；是否沉淀由用户在 AITodo 中确认。',
+    ].join('\n');
   }
 
   private buildContentHash(content: string) {

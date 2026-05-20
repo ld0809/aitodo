@@ -8,6 +8,9 @@ import { OpenClawDispatch } from './entities/openclaw-dispatch.entity';
 import { Tag } from './entities/tag.entity';
 import { TapdConfig } from './entities/tapd-config.entity';
 import { TodoCalendarSyncRecord } from './entities/todo-calendar-sync.entity';
+import { TodoAiMessage } from './entities/todo-ai-message.entity';
+import { TodoAiSession } from './entities/todo-ai-session.entity';
+import { TodoAiSuggestion } from './entities/todo-ai-suggestion.entity';
 import { TodoProgressEntry } from './entities/todo-progress.entity';
 import { Todo } from './entities/todo.entity';
 import { User } from './entities/user.entity';
@@ -17,6 +20,9 @@ export const APP_ENTITIES = [
   EmailCode,
   Tag,
   Todo,
+  TodoAiSession,
+  TodoAiMessage,
+  TodoAiSuggestion,
   TodoProgressEntry,
   Card,
   TapdConfig,

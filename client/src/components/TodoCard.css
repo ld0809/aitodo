@@ -93,6 +93,27 @@
   color: var(--accent);
 }
 
+.todo-ai-entry-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 118, 110, 0.26);
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.todo-ai-entry-btn:hover {
+  border-color: #059669;
+  color: #065f46;
+}
+
 .todo-content {
   flex: 1;
 }

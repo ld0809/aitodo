@@ -99,6 +99,61 @@ export interface TodoProgressEntry {
   createdAt: string;
 }
 
+export interface TodoAiSessionSummary {
+  id: string;
+  todoId: string;
+  sessionKey: string;
+  status: 'active' | 'archived';
+  lastMessageAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface TodoAiMessage {
+  id: string;
+  sessionId: string;
+  todoId: string;
+  userId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  openClawDispatchId: string | null;
+  createdAt: string;
+}
+
+export interface TodoAiSuggestion {
+  id: string;
+  sessionId: string;
+  todoId: string;
+  messageId: string;
+  createdByUserId: string;
+  type: 'progress';
+  status: 'pending' | 'applied' | 'dismissed';
+  content: string;
+  appliedByUserId: string | null;
+  appliedProgressEntryId: string | null;
+  appliedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TodoAiSessionPayload {
+  session: TodoAiSessionSummary;
+  messages: TodoAiMessage[];
+  suggestions: TodoAiSuggestion[];
+}
+
+export interface TodoAiMessageResult {
+  session: TodoAiSessionSummary;
+  userMessage: TodoAiMessage;
+  assistantMessage: TodoAiMessage;
+  suggestions: TodoAiSuggestion[];
+}
+
+export interface TodoAiApplySuggestionResult {
+  suggestion: TodoAiSuggestion;
+  progress: TodoProgressEntry & { progressCount: number };
+}
+
 export interface Card {
   id: string;
   userId: string;

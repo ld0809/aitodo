@@ -16,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { MiniappModule } from './miniapp/miniapp.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { OpenClawModule } from './openclaw/openclaw.module';
+import { TodoAiModule } from './todo-ai/todo-ai.module';
 
 function resolveDatabasePath() {
   const databasePath = process.env.DATABASE_PATH ?? 'data/app.db';
@@ -61,6 +62,7 @@ function resolveTypeormSynchronize() {
     MiniappModule,
     OrganizationsModule,
     OpenClawModule,
+    TodoAiModule,
   ],
 })
 export class AppModule {}

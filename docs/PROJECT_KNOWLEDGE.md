@@ -1,6 +1,6 @@
 # AITodo 项目基本知识
 
-> 最后更新：2026-05-15  
+> 最后更新：2026-05-20  
 > 用途：给后续开发提供当前代码事实、业务规则和 UI 交互约定。开发前先读本文件；当代码架构、业务逻辑或 UI 交互发生变化时，必须同步更新。
 
 ## 1. 项目定位
@@ -31,6 +31,7 @@ AITodo 是一个聚合多来源待办的个人/协作任务管理系统。核心
 - `plugins`：数据源插件注册和执行，当前包含本地待办、TAPD、GitHub/Jira 适配雏形。
 - `tapd`：TAPD 配置、查询、状态/人员选项、同源详情代理。
 - `reports`：基于进度更新生成 AI 报告。
+- `todo-ai`：单个待办的 AI 对话 session、消息历史、AI 建议沉淀。
 - `miniapp`：小程序绑定、首页查询、日历同步准备/确认。
 - `organizations`：组织与成员管理，用于共享卡片参与人选择。
 - `openclaw`：OpenClaw 绑定、WebSocket 通道、共享待办分发。
@@ -57,6 +58,18 @@ AITodo 是一个聚合多来源待办的个人/协作任务管理系统。核心
 `TodoProgressEntry`
 - 待办进度记录，用于 AI 报告。
 - 每新增一条进度，会递增待办上的 `progressCount`。
+
+`TodoAiSession`
+- 单个本地/共享待办的 AI 对话会话。
+- `todoId` 唯一，`sessionKey` 固定为 `aitodo:todo:{todoId}`，用于 OpenClaw 按待办隔离上下文。
+
+`TodoAiMessage`
+- 保存待办 AI 对话历史，角色为 `user` 或 `assistant`。
+- assistant 消息可记录对应的 OpenClaw dispatch id。
+
+`TodoAiSuggestion`
+- 保存 AI 回复中可沉淀的结构化建议。
+- 当前 `type` 为 `progress`，状态包含 `pending`、`applied`、`dismissed`；用户确认后写入 `TodoProgressEntry`。
 
 `Card`
 - 看板卡片，字段包含 `name`、`cardType`、`status`、`sortBy`、`sortOrder`、布局 `x/y/w/h`、`pluginType`、`pluginConfigJson`。
@@ -103,6 +116,13 @@ AI 报告：
 - 先收集指定时间段内有进度更新的待办，再交给 AI 服务生成报告。
 - 第三方 TAPD 待办没有本地进度，因此不进入本地进度报告数据源，除非未来明确新增同步/映射规则。
 
+待办 AI 对话：
+- 本地和共享待办支持打开 AI 对话；TAPD 待办仍保持只读，不支持本地 AI 对话沉淀。
+- 每个待办只有一个 AI session，本地唯一键为 `todo_ai_sessions.todo_id`，OpenClaw `sessionKey` 为 `aitodo:todo:{todoId}`。
+- 用户消息经 OpenClaw channel 发送到远程龙虾，来源标记为 `aitodo-todo-chat`，推荐路由为 `todo-copilot`。
+- AI 回复会保存为消息历史；如果回复包含“建议沉淀为进度：”，后端会生成 `pending` 建议。
+- AI 建议不会自动修改待办。用户点击沉淀后，才创建进度记录并递增 `progressCount`。
+
 小程序与日历：
 - 小程序用户必须绑定邮箱用户。
 - 日历同步按设备维度记录同步状态，避免重复写入。
@@ -112,6 +132,7 @@ OpenClaw：
 - 用户可绑定 OpenClaw。
 - 共享卡片中分配给某用户的待办会被分发给该用户绑定的 OpenClaw。
 - OpenClaw 回写方案/进展时进入待办进度记录。
+- 待办 AI 对话也复用 OpenClaw WebSocket 通道，按 `aitodo:todo:{todoId}` 隔离 session。
 
 ## 5. 前端架构
 
@@ -132,6 +153,7 @@ OpenClaw：
 主要组件：
 - `Header`：顶部导航、目标展示、用户菜单、入口按钮。
 - `TodoCard`：待办 item 展示、完成勾选、进度按钮、TAPD/共享元信息。
+- `TodoAiDrawer`：单个待办的 AI 对话抽屉，展示消息、可沉淀建议和输入框。
 - `CardModal`：创建/编辑个人卡片、共享卡片、TAPD 卡片。
 - `TodoModal`：创建/编辑待办。
 - `ProgressModal`：追加进度。
@@ -151,6 +173,7 @@ OpenClaw：
 - 本地和共享卡片待办支持在卡片之间拖拽移动，拖放后更新待办 `cardId` 并刷新卡片数据；TAPD 只读待办不能拖拽移动。
 - 卡片可打开编辑、归档、删除。归档/删除入口在更多菜单中。
 - 本地/共享卡片待办可完成、编辑、追加进度。
+- 本地/共享卡片待办可打开 AI 对话；AI 对话里的建议需用户确认后才沉淀为进度。
 - TAPD 卡片待办只读，点击可打开 TAPD 详情代理或原链接。
 - 已完成待办隐藏后，卡片计数显示当前可见数量。
 
@@ -159,6 +182,7 @@ OpenClaw：
 - 视图模式存储在 localStorage：`aitodo:dashboard:view-mode`。
 - 左侧筛选包含“全部”、标签、TAPD 卡片。
 - 选中待办后右侧展示详情；本地待办可直接编辑内容、时间、标签和进度。
+- 列表模式选中本地/共享待办后，右下角浮动操作支持打开 AI 对话和追加进度。
 - TAPD 待办右侧优先展示同源详情 iframe，无法生成详情时提示打开原链接。
 
 视觉约定：
@@ -176,6 +200,9 @@ OpenClaw：
 - `GET /tags`、`POST /tags`、`PATCH /tags/:id`、`DELETE /tags/:id`
 - `GET /todos`、`POST /todos`、`PATCH /todos/:id`、`PATCH /todos/:id/complete`、`DELETE /todos/:id`
 - `GET /todos/:id/progress`、`POST /todos/:id/progress`
+- `GET /todos/:id/ai/session`：返回单待办 AI session、消息和建议。
+- `POST /todos/:id/ai/messages`：发送单待办 AI 对话消息，返回用户消息、AI 回复和本轮建议。
+- `POST /todos/:id/ai/suggestions/:suggestionId/apply`：确认 AI 建议并沉淀为待办进度。
 - `GET /cards?viewport=<viewport>&status=<active|archived>`
 - `POST /cards`、`PATCH /cards/:id`、`DELETE /cards/:id`
 - `PATCH /cards/:id/archive`

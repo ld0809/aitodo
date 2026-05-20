@@ -1,0 +1,180 @@
+.todo-ai-drawer-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.todo-ai-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.24);
+  cursor: default;
+}
+
+.todo-ai-drawer {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 100vw);
+  height: 100%;
+  background: var(--bg);
+  box-shadow: -18px 0 45px rgba(15, 23, 42, 0.16);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+}
+
+.todo-ai-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.todo-ai-drawer__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--txt);
+}
+
+.todo-ai-drawer__todo {
+  margin-top: 6px;
+  color: var(--txt2);
+  font-size: 13px;
+  line-height: 1.45;
+  max-height: 40px;
+  overflow: hidden;
+}
+
+.todo-ai-drawer__close {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r1);
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--txt2);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.todo-ai-drawer__messages {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px;
+  background: var(--bg2);
+}
+
+.todo-ai-drawer__empty {
+  color: var(--txt3);
+  font-size: 13px;
+  padding: 10px 0;
+}
+
+.todo-ai-message {
+  margin-bottom: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.todo-ai-message__role {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--txt2);
+}
+
+.todo-ai-message__content {
+  width: fit-content;
+  max-width: 92%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--txt);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.todo-ai-message--user {
+  justify-items: end;
+}
+
+.todo-ai-message--user .todo-ai-message__content {
+  background: #e0f2fe;
+  border-color: rgba(14, 116, 144, 0.18);
+}
+
+.todo-ai-suggestions {
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.todo-ai-suggestions__title {
+  color: var(--txt2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.todo-ai-suggestion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.todo-ai-suggestion__content {
+  border: 1px solid rgba(5, 150, 105, 0.18);
+  background: #ecfdf5;
+  color: #064e3b;
+  border-radius: var(--r2);
+  padding: 9px 10px;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.todo-ai-drawer__error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-top: 1px solid #fecaca;
+  padding: 10px 20px;
+  font-size: 13px;
+}
+
+.todo-ai-drawer__composer {
+  border-top: 1px solid var(--border);
+  padding: 14px 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.todo-ai-drawer__composer textarea {
+  min-height: 76px;
+  max-height: 160px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--txt);
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .todo-ai-drawer {
+    width: 100vw;
+  }
+
+  .todo-ai-drawer__composer {
+    grid-template-columns: 1fr;
+  }
+}
